@@ -1,7 +1,6 @@
 package com.p3.archon.sip_process.processor;
 
 import com.p3.archon.sip_process.bean.InputArgs;
-import com.p3.archon.sip_process.bean.IntermediateJsonBean;
 import com.p3.archon.sip_process.core.ConnectionChecker;
 import com.p3.archon.sip_process.core.PdiSchemaGeneratorRussianDoll;
 import com.p3.archon.sip_process.core.SipCreator;
@@ -93,14 +92,14 @@ public class Processor {
          *  Responsible for generating Record.Txt file for All Paths.
          */
 
-        Map<Integer, Long> fileAndLinesMaintainer = new LinkedHashMap<>();
-        Map<Integer, IntermediateJsonBean> intermediateJsonBeanMap = getStartGeneratingRecordFileAndCreateIntermediateJsonBean(pathTableList, queryList, mainTablePrimaryKeyColumns, fileAndLinesMaintainer, customThreadPool);
+        Map<Integer, List<String>> filePreviousLinesMaintainer = new LinkedHashMap<>();
+        Map<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserMap = getStartGeneratingRecordFileAndCreateIntermediateJsonBean(pathTableList, queryList, mainTablePrimaryKeyColumns, filePreviousLinesMaintainer, customThreadPool);
 
 
         /**
          *  Responsible for iterating Each Main Table Record and Add Into Batch Assembler
          */
-        startIterateEachMainTableRecord(mainTablePrimaryKeyColumns, mainTableRowPrimaryValues, fileAndLinesMaintainer, intermediateJsonBeanMap);
+        startIterateEachMainTableRecord(mainTableRowPrimaryValues, filePreviousLinesMaintainer, sipIntermediateJsonParserMap);
 
         /**
          *  Responsible for generating Single Record based on Main Table Key Values
@@ -115,30 +114,43 @@ public class Processor {
             deleteUnwantedFiles();
     }
 
-    private void startIterateEachMainTableRecord(List<String> mainTablePrimaryKeyColumns, List<String> mainTableRowPrimaryValues, Map<Integer, Long> fileAndLinesMaintainer, Map<Integer, IntermediateJsonBean> intermediateJsonBeanMap) {
+    private void startIterateEachMainTableRecord(List<String> mainTableRowPrimaryValues, Map<Integer, List<String>> filePreviousLinesMaintainer, Map<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserMap) {
         SipCreator sipCreator = new SipCreator(inputBean);
-        int rowCounter = 1;
+        long rowCounter = 1;
         try {
-
-
             for (String mainTableKeyRowsValue : mainTableRowPrimaryValues) {
                 LOGGER.debug(rowCounter + " : Row Start Processing");
                 customThreadPool.submit(() -> {
-                    intermediateJsonBeanMap.entrySet().parallelStream().forEach(
-                            integerIntermediateJsonBeanEntry -> {
-                                startGeneratingIntermediateJsonBasedOnMainTableValues(mainTablePrimaryKeyColumns, fileAndLinesMaintainer, intermediateJsonBeanMap, mainTableKeyRowsValue, integerIntermediateJsonBeanEntry);
+                    sipIntermediateJsonParserMap.entrySet().parallelStream().forEach(
+                            sipIntermediateJsonParserEntry -> {
+                                startGeneratingIntermediateJsonBasedOnMainTableValues(
+                                        filePreviousLinesMaintainer,
+                                        sipIntermediateJsonParserMap.get(sipIntermediateJsonParserEntry.getKey()),
+                                        mainTableKeyRowsValue,
+                                        sipIntermediateJsonParserEntry.getKey()
+                                );
                             }
                     );
                 }).get();
                 startAddingRecordIntoBatchAssembler(sipCreator);
                 LOGGER.debug(rowCounter + " : Row Processed");
+
+                if (rowCounter % 10000 == 0) {
+                    LOGGER.debug("======================================================");
+                    LOGGER.debug("");
+                    LOGGER.debug(rowCounter + " Processed");
+                    LOGGER.debug("");
+                    LOGGER.debug("======================================================");
+                }
                 rowCounter++;
+            }
+            for (Map.Entry<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserEntry : sipIntermediateJsonParserMap.entrySet()) {
+                sipIntermediateJsonParserEntry.getValue().closeCSVReader();
             }
             sipCreator.getBatchAssembler().end();
         } catch (Exception e) {
             LOGGER.error("Error :" + rowCounter);
         }
-
         LOGGER.info("Total No.of.Records Processed :" + (rowCounter - 1));
     }
 
@@ -151,42 +163,32 @@ public class Processor {
         sipIntermediateJsonToXmlParser.createXMlDocument();
     }
 
-    private void startGeneratingIntermediateJsonBasedOnMainTableValues(List<String> mainTablePrimaryKeyColumns, Map<Integer, Long> fileAndLinesMaintainer, Map<Integer, IntermediateJsonBean> intermediateJsonBeanMap, String mainTableKeyRowsValue, Map.Entry<Integer, IntermediateJsonBean> integerIntermediateJsonBeanEntry) {
-        IntermediateJsonBean intermediateBean = intermediateJsonBeanMap.get(integerIntermediateJsonBeanEntry.getKey());
-        SipIntermediateJsonParser sipIntermediateJsonParser = new SipIntermediateJsonParser(intermediateBean.getTestFileLocation(),
-                intermediateBean.getTableColumnCount(),
-                intermediateBean.getHeaderList(),
-                intermediateBean.getTablePrimaryHeaderPosition(),
-                integerIntermediateJsonBeanEntry.getKey(),
-                inputBean.getOutputLocation(),
-                mainTablePrimaryKeyColumns.size());
-        long endLineCount = sipIntermediateJsonParser.startParsing(mainTableKeyRowsValue,
-                fileAndLinesMaintainer.get(integerIntermediateJsonBeanEntry.getKey()));
-        fileAndLinesMaintainer.put(integerIntermediateJsonBeanEntry.getKey(), endLineCount);
+    private void startGeneratingIntermediateJsonBasedOnMainTableValues(Map<Integer, List<String>> filePreviousLinesMaintainer, SipIntermediateJsonParser sipIntermediateJsonParser, String mainTableKeyRowsValue, Integer key) {
+        List endLineCount = sipIntermediateJsonParser.startParsing(mainTableKeyRowsValue, filePreviousLinesMaintainer.get(key));
+        filePreviousLinesMaintainer.put(key, endLineCount);
     }
 
-    private Map<Integer, IntermediateJsonBean> getStartGeneratingRecordFileAndCreateIntermediateJsonBean(Map<Integer, List<String>> pathTableList, Map<Integer, String> queryList, List<String> mainTablePrimaryKeyColumns, Map<Integer, Long> fileAndLinesMaintainer, ForkJoinPool customThreadPool) throws ExecutionException, InterruptedException {
-        Map<Integer, IntermediateJsonBean> intermediateJsonBeanMap = new LinkedHashMap<>();
+    private Map<Integer, SipIntermediateJsonParser> getStartGeneratingRecordFileAndCreateIntermediateJsonBean(Map<Integer, List<String>> pathTableList, Map<Integer, String> queryList, List<String> mainTablePrimaryKeyColumns, Map<Integer, List<String>> filePreviousLinesMaintainer, ForkJoinPool customThreadPool) throws ExecutionException, InterruptedException {
+        Map<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserMap = new LinkedHashMap<>();
         String ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN = " ORDER BY " + String.join(",", mainTablePrimaryKeyColumns);
         customThreadPool.submit(() -> {
             queryList.entrySet().parallelStream().forEach(
                     query -> {
-                        startGeneratingRecordFile(pathTableList, fileAndLinesMaintainer, intermediateJsonBeanMap, ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, query);
-
+                        startGeneratingRecordFile(pathTableList, filePreviousLinesMaintainer, sipIntermediateJsonParserMap, ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, query, mainTablePrimaryKeyColumns.size());
                     });
         }).get();
-        return intermediateJsonBeanMap;
+        return sipIntermediateJsonParserMap;
     }
 
-    private void startGeneratingRecordFile(Map<Integer, List<String>> pathTableList, Map<Integer, Long> fileAndLinesMaintainer, Map<Integer, IntermediateJsonBean> intermediateJsonBeanMap, String ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, Map.Entry<Integer, String> query) {
+    private void startGeneratingRecordFile(Map<Integer, List<String>> pathTableList, Map<Integer, List<String>> filePreviousLinesMaintainer, Map<Integer, SipIntermediateJsonParser> intermediateJsonBeanMap, String ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, Map.Entry<Integer, String> query, int mainTablePrimaryKeyColumnsCount) {
         LOGGER.info(query.getKey() + ": Path Record File Created Successfully Started");
         try {
-            intermediateJsonBeanMap.put(query.getKey(), runQueryAndCreateIntermediateJson(query.getKey(), query.getValue() + ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, pathTableList.get(query.getKey())));
+            intermediateJsonBeanMap.put(query.getKey(), runQueryAndCreateIntermediateJson(query.getKey(), query.getValue() + ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, pathTableList.get(query.getKey()), mainTablePrimaryKeyColumnsCount));
         } catch (SQLException e) {
             LOGGER.info(query.getKey() + ": Path Record File Created Successfully Started");
             e.printStackTrace();
         }
-        fileAndLinesMaintainer.put(query.getKey(), (long) 0);
+        filePreviousLinesMaintainer.put(query.getKey(), new ArrayList<>());
         LOGGER.info(query.getKey() + ": Path Record File Created Successfully Completed");
     }
 
@@ -229,8 +231,8 @@ public class Processor {
     /**
      * Responsible for run the query and parse the data .
      */
-    private IntermediateJsonBean runQueryAndCreateIntermediateJson(int fileCounter, String
-            query, List<String> tableList) throws SQLException {
+    private SipIntermediateJsonParser runQueryAndCreateIntermediateJson(int fileCounter, String
+            query, List<String> tableList, int mainTablePrimaryKeyColumnsCount) throws SQLException {
         LOGGER.debug("QUERY  : " + query);
         int row = 0;
         String testFileLocation = Utility.getFileName(inputBean.getOutputLocation(), "records_", fileCounter, "txt");
@@ -269,7 +271,15 @@ public class Processor {
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
         }
-        return IntermediateJsonBean.builder().headerList(headerList).tableColumnCount(tableColumnCount).tablePrimaryHeaderPosition(tablePrimaryHeaderPosition).testFileLocation(testFileLocation).build();
+
+        SipIntermediateJsonParser sipIntermediateJsonParser = new SipIntermediateJsonParser(testFileLocation,
+                tableColumnCount,
+                headerList,
+                tablePrimaryHeaderPosition,
+                fileCounter,
+                inputBean.getOutputLocation(),
+                mainTablePrimaryKeyColumnsCount);
+        return sipIntermediateJsonParser;
     }
 
     private Map<String, List<Integer>> getTablePrimaryHeaderPositionMap

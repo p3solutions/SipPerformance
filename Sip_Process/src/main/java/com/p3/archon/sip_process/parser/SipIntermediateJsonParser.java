@@ -7,6 +7,7 @@ import com.opencsv.CSVReaderBuilder;
 import com.opencsv.enums.CSVReaderNullFieldIndicator;
 import com.opencsv.exceptions.CsvValidationException;
 import com.p3.archon.sip_process.utility.Utility;
+import lombok.SneakyThrows;
 import org.apache.log4j.Logger;
 import org.json.JSONObject;
 
@@ -35,6 +36,7 @@ public class SipIntermediateJsonParser {
     private String outputLocation;
     private int mainTablePrimaryKeyCount;
 
+    private CSVReader csvReader = null;
     private Logger LOGGER = Logger.getLogger(this.getClass().getName());
 
     public SipIntermediateJsonParser(String fileLocationWithName, Map<String, Long> tableColumnCount, List<String> headerList,
@@ -49,12 +51,28 @@ public class SipIntermediateJsonParser {
         this.fileCounter = fileCounter;
         this.outputLocation = outputLocation;
         this.mainTablePrimaryKeyCount = mainTablePrimaryKeyCount;
+        initializeCSvReader();
     }
 
+    @SneakyThrows
+    private void initializeCSvReader() {
+        CSVParser parser;
+        parser = new CSVParserBuilder().withSeparator('|')
+                .withFieldAsNull(CSVReaderNullFieldIndicator.BOTH).withIgnoreLeadingWhiteSpace(true)
+                .withIgnoreQuotations(false).withQuoteChar('"').withStrictQuotes(false).build();
+        csvReader = new CSVReaderBuilder(new FileReader(fileLocationWithName))
+                .withCSVParser(parser)
+                .withSkipLines(1).build();
+    }
 
-    public long startParsing(String mainTableRowRecordValue, long lineSkipper) {
+    @SneakyThrows
+    public void closeCSVReader() {
+        csvReader.close();
+    }
+
+    public List<String> startParsing(String mainTableRowRecordValue, List<String> previousLineRecord) {
         JSONObject rootTableJson = new JSONObject();
-        long nextLineSkipper = parseAllLinesAndPrepareIntermediateJson(rootTableJson, mainTableRowRecordValue, lineSkipper);
+        List<String> previousLine = parseAllLinesAndPrepareIntermediateJson(rootTableJson, mainTableRowRecordValue, previousLineRecord);
         PrintWriter intermediateJsonWriter = null;
         try {
             intermediateJsonWriter = new PrintWriter(Utility.getFileName(outputLocation, "IntermediateJson_", fileCounter, "json"));
@@ -62,41 +80,44 @@ public class SipIntermediateJsonParser {
             LOGGER.error("IntermediateJson File Not Found : " + e.getMessage());
         }
         Utility.fileCreatorWithContent(intermediateJsonWriter, rootTableJson.toString());
-        return nextLineSkipper;
+        return previousLine;
     }
 
-    private long parseAllLinesAndPrepareIntermediateJson(JSONObject rootTableJson, String mainTableRowRecordValue, long lineSkipper) {
-        CSVParser parser;
-        int counter = 0;
-        try {
-            parser = new CSVParserBuilder().withSeparator('|')
-                    .withFieldAsNull(CSVReaderNullFieldIndicator.BOTH).withIgnoreLeadingWhiteSpace(true)
-                    .withIgnoreQuotations(false).withQuoteChar('"').withStrictQuotes(false).build();
-            CSVReader csvReader = new CSVReaderBuilder(new FileReader(fileLocationWithName))
-                    .withCSVParser(parser)
-                    .withSkipLines(1).build();
-            String[] line;
-            rootTableJson.put(tablesList.get(0), new JSONObject());
+    private List<String> parseAllLinesAndPrepareIntermediateJson(JSONObject rootTableJson, String mainTableRowRecordValue, List<String> previousLineRecord) {
 
-            while ((line = csvReader.readNext()) != null) {
-                if (lineSkipper != 0 && counter <= lineSkipper) {
-                    if (counter != lineSkipper) {
-                        counter++;
-                        continue;
+        List<String> returnPreviousList = new ArrayList<>();
+        try {
+            rootTableJson.put(tablesList.get(0), new JSONObject());
+            if (!previousLineRecord.isEmpty()) {
+                String[] previousLine = new String[previousLineRecord.size()];
+                previousLine = previousLineRecord.toArray(previousLine);
+                parseJsonResult(rootTableJson.getJSONObject(tablesList.get(0)), previousLine, tableColumnCount, tablesList, tablesList.get(0), new ArrayList<>(), 0, 0, 0);
+            }
+            String[] line = null;
+            do {
+                if (line != null && line.length != 0) {
+                    if (checkMatching(line, mainTableRowRecordValue)) {
+                        parseJsonResult(rootTableJson.getJSONObject(tablesList.get(0)), line, tableColumnCount, tablesList, tablesList.get(0), new ArrayList<>(), 0, 0, 0);
+                    } else {
+                        returnPreviousList = Arrays.asList(line);
+                        break;
                     }
                 }
+            } while ((line = csvReader.readNext()) != null);
+
+
+            /*while ((line = csvReader.readNext()) != null) {
                 if (checkMatching(line, mainTableRowRecordValue)) {
                     parseJsonResult(rootTableJson.getJSONObject(tablesList.get(0)), line, tableColumnCount, tablesList, tablesList.get(0), new ArrayList<>(), 0, 0, 0);
                 } else {
-
-                    return counter++;
+                    returnPreviousList = Arrays.asList(line);
+                    break;
                 }
-                counter++;
-            }
+            }*/
         } catch (IOException | CsvValidationException e) {
-            e.printStackTrace();
+            LOGGER.error("IntermediateJson File Not Found : " + e.getMessage());
         }
-        return counter;
+        return returnPreviousList;
     }
 
     private boolean checkMatching(String[] line, String mainTableRowRecordValue) {
