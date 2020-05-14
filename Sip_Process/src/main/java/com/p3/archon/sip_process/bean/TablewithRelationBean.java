@@ -1,8 +1,7 @@
 package com.p3.archon.sip_process.bean;
 
-import lombok.*;
-
 import java.util.List;
+import java.util.TreeMap;
 
 /**
  * Created by Suriyanarayanan K
@@ -12,6 +11,16 @@ import java.util.List;
 public class TablewithRelationBean {
 
     private List<TableDetails> tableList;
+    public TreeMap<String, String> charReplace = new TreeMap<>();
+
+
+    public TreeMap<String, String> getCharReplace() {
+        return charReplace;
+    }
+
+    public void setCharReplace(TreeMap<String, String> charReplace) {
+        this.charReplace = charReplace;
+    }
 
     public List<TableDetails> getTableList() {
         return tableList;

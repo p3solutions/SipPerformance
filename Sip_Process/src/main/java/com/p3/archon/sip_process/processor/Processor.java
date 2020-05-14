@@ -3,6 +3,7 @@ package com.p3.archon.sip_process.processor;
 import com.p3.archon.sip_process.bean.InputArgs;
 import com.p3.archon.sip_process.core.ConnectionChecker;
 import com.p3.archon.sip_process.core.PdiSchemaGeneratorRussianDoll;
+import com.p3.archon.sip_process.core.RowObjectCreator;
 import com.p3.archon.sip_process.core.SipCreator;
 import com.p3.archon.sip_process.parser.PathandQueryCreator;
 import com.p3.archon.sip_process.parser.SipIntermediateJsonParser;
@@ -78,14 +79,14 @@ public class Processor {
         PathandQueryCreator pathandQueryCreator = new PathandQueryCreator(inputBean);
         Map<Integer, List<String>> pathTableList = pathandQueryCreator.startParsingAndCreationPathList();
         Map<Integer, String> queryList = pathandQueryCreator.getConstructQueryList(pathTableList);
-
+        TreeMap<String, String> charReplacement = pathandQueryCreator.getCharacterReplacementMap();
 
         /**
          *  Responsible for getting All Primary Column Names and Values
          */
         Connection connection = connectionChecker.checkConnection(inputBean);
         List<String> mainTablePrimaryKeyColumns = getMainTablePrimaryKeyColumnsList(connection);
-        List<String> mainTableRowPrimaryValues = getMainTablePrimaryKeyColumnsValues(pathandQueryCreator, connection, mainTablePrimaryKeyColumns);
+        List<String> mainTableRowPrimaryValues = getMainTablePrimaryKeyColumnsValues(pathandQueryCreator, connection, mainTablePrimaryKeyColumns, charReplacement);
 
 
         /**
@@ -93,7 +94,7 @@ public class Processor {
          */
 
         Map<Integer, List<String>> filePreviousLinesMaintainer = new LinkedHashMap<>();
-        Map<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserMap = getStartGeneratingRecordFileAndCreateIntermediateJsonBean(pathTableList, queryList, mainTablePrimaryKeyColumns, filePreviousLinesMaintainer, customThreadPool);
+        Map<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserMap = getStartGeneratingRecordFileAndCreateIntermediateJsonBean(pathTableList, queryList, mainTablePrimaryKeyColumns, filePreviousLinesMaintainer, customThreadPool, charReplacement);
 
 
         /**
@@ -168,22 +169,22 @@ public class Processor {
         filePreviousLinesMaintainer.put(key, endLineCount);
     }
 
-    private Map<Integer, SipIntermediateJsonParser> getStartGeneratingRecordFileAndCreateIntermediateJsonBean(Map<Integer, List<String>> pathTableList, Map<Integer, String> queryList, List<String> mainTablePrimaryKeyColumns, Map<Integer, List<String>> filePreviousLinesMaintainer, ForkJoinPool customThreadPool) throws ExecutionException, InterruptedException {
+    private Map<Integer, SipIntermediateJsonParser> getStartGeneratingRecordFileAndCreateIntermediateJsonBean(Map<Integer, List<String>> pathTableList, Map<Integer, String> queryList, List<String> mainTablePrimaryKeyColumns, Map<Integer, List<String>> filePreviousLinesMaintainer, ForkJoinPool customThreadPool, TreeMap<String, String> charReplacement) throws ExecutionException, InterruptedException {
         Map<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserMap = new LinkedHashMap<>();
         String ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN = " ORDER BY " + String.join(",", mainTablePrimaryKeyColumns);
         customThreadPool.submit(() -> {
             queryList.entrySet().parallelStream().forEach(
                     query -> {
-                        startGeneratingRecordFile(pathTableList, filePreviousLinesMaintainer, sipIntermediateJsonParserMap, ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, query, mainTablePrimaryKeyColumns.size());
+                        startGeneratingRecordFile(pathTableList, filePreviousLinesMaintainer, sipIntermediateJsonParserMap, ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, query, mainTablePrimaryKeyColumns, charReplacement);
                     });
         }).get();
         return sipIntermediateJsonParserMap;
     }
 
-    private void startGeneratingRecordFile(Map<Integer, List<String>> pathTableList, Map<Integer, List<String>> filePreviousLinesMaintainer, Map<Integer, SipIntermediateJsonParser> intermediateJsonBeanMap, String ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, Map.Entry<Integer, String> query, int mainTablePrimaryKeyColumnsCount) {
+    private void startGeneratingRecordFile(Map<Integer, List<String>> pathTableList, Map<Integer, List<String>> filePreviousLinesMaintainer, Map<Integer, SipIntermediateJsonParser> intermediateJsonBeanMap, String ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, Map.Entry<Integer, String> query, List<String> mainTablePrimaryKeyColumns, TreeMap<String, String> charReplacement) {
         LOGGER.info(query.getKey() + ": Path Record File Created Successfully Started");
         try {
-            intermediateJsonBeanMap.put(query.getKey(), runQueryAndCreateIntermediateJson(query.getKey(), query.getValue() + ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, pathTableList.get(query.getKey()), mainTablePrimaryKeyColumnsCount));
+            intermediateJsonBeanMap.put(query.getKey(), runQueryAndCreateIntermediateJson(query.getKey(), query.getValue() + ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN, pathTableList.get(query.getKey()), mainTablePrimaryKeyColumns, charReplacement));
         } catch (SQLException e) {
             LOGGER.info(query.getKey() + ": Path Record File Created Successfully Started");
             e.printStackTrace();
@@ -193,7 +194,7 @@ public class Processor {
     }
 
     private List<String> getMainTablePrimaryKeyColumnsValues(PathandQueryCreator pathandQueryCreator, Connection
-            connection, List<String> mainTablePrimaryKeyColumns) {
+            connection, List<String> mainTablePrimaryKeyColumns, TreeMap<String, String> charReplacement) {
         List<String> mainTableTableRowPrimaryValues = new ArrayList<>();
         try (
                 Statement statement = connection.createStatement();
@@ -202,8 +203,9 @@ public class Processor {
                     inputBean.getSchemaName() + "." + inputBean.getMainTable() + pathandQueryCreator.getMainTableFilterQuery();
             ResultSet mainTableResultSet = statement.executeQuery(QUERY_STRING);
             ResultSetMetaData mainTableResultSetMetaData = mainTableResultSet.getMetaData();
+            RowObjectCreator mainTableRowObjectCreator = new RowObjectCreator(mainTableResultSetMetaData, inputBean.getOutputLocation(), charReplacement, inputBean.isShowDatetime());
             while (mainTableResultSet.next()) {
-                List<String> rowObject = getRowObjectList(mainTableResultSet, mainTableResultSetMetaData);
+                List<String> rowObject = mainTableRowObjectCreator.getRowObjectList(mainTableResultSet);
                 mainTableTableRowPrimaryValues.add(String.join(",", rowObject));
             }
         } catch (SQLException e) {
@@ -232,7 +234,7 @@ public class Processor {
      * Responsible for run the query and parse the data .
      */
     private SipIntermediateJsonParser runQueryAndCreateIntermediateJson(int fileCounter, String
-            query, List<String> tableList, int mainTablePrimaryKeyColumnsCount) throws SQLException {
+            query, List<String> tableList, List<String> mainTablePrimaryKeyColumns, TreeMap<String, String> charReplacement) throws SQLException {
         LOGGER.debug("QUERY  : " + query);
         int row = 0;
         String testFileLocation = Utility.getFileName(inputBean.getOutputLocation(), "records_", fileCounter, "txt");
@@ -253,10 +255,11 @@ public class Processor {
             Map<String, List<String>> tablePrimaryKey = generateTablePrimaryKey(new LinkedHashMap<>(), databaseMetaData, tableList);
             headerList = getHeaderList(resultSetMetaData);
             recordFileWriter.append(String.join("\\|", headerList) + "\n");
+            RowObjectCreator rowObjectCreator = new RowObjectCreator(resultSetMetaData, inputBean.getOutputLocation(), charReplacement, inputBean.isShowDatetime());
             while (resultSet.next()) {
                 LOGGER.debug(row + " : Row Writing into Record File");
-                List<String> rowObject = getRowObjectList(resultSet, resultSetMetaData);
-                recordFileWriter.append(String.join("\\|", rowObject) + "\n");
+                List<String> rowObject = rowObjectCreator.getRowObjectList(resultSet);
+                recordFileWriter.append(String.join("�", rowObject) + "\n");
                 recordFileWriter.flush();
                 LOGGER.debug(row + " : Row Written");
                 row++;
@@ -278,7 +281,7 @@ public class Processor {
                 tablePrimaryHeaderPosition,
                 fileCounter,
                 inputBean.getOutputLocation(),
-                mainTablePrimaryKeyColumnsCount);
+                mainTablePrimaryKeyColumns.size());
         return sipIntermediateJsonParser;
     }
 
@@ -301,30 +304,7 @@ public class Processor {
     }
 
 
-    private List<String> getRowObjectList(ResultSet resultSet, ResultSetMetaData resultSetMetaData) throws
-            SQLException {
-        List<String> rowObject = new ArrayList<>();
-        for (int i = 1; i <= resultSetMetaData.getColumnCount(); i++) {
-            int type = resultSetMetaData.getColumnType(i);
-            if (type == Types.VARCHAR || type == Types.CHAR) {
-                rowObject.add(String.valueOf(resultSet.getString(i)));
-            } else if (type == Types.TINYINT || type == Types.NUMERIC || type == Types.BIGINT) {
-                rowObject.add(String.valueOf(resultSet.getLong(i)));
-            } else if (type == Types.DECIMAL || type == Types.DOUBLE) {
-                rowObject.add(String.valueOf(resultSet.getDouble(i)));
-            } else if (type == Types.TIME_WITH_TIMEZONE || type == Types.TIMESTAMP_WITH_TIMEZONE ||
-                    type == Types.TIMESTAMP) {
-                rowObject.add(resultSet.getTimestamp(i) == null ? "NULL" : resultSet.getTimestamp(i).toString());
-            } else if (type == Types.TIME) {
-                rowObject.add(String.valueOf(resultSet.getTime(i)));
-            } else if (type == Types.DATE) {
-                rowObject.add(String.valueOf(resultSet.getDate(i)));
-            } else {
-                rowObject.add(String.valueOf(resultSet.getString(i)));
-            }
-        }
-        return rowObject;
-    }
+
 
     private Map<String, Long> getTableColumnCount(List<String> headerList) {
         Map<String, Long> tableColumnCount = new LinkedHashMap<>();

@@ -26,9 +26,9 @@ public class SipCreator {
         this.rpx = argsBean.getRpx();
         this.appName = argsBean.getAppName();
         this.holding = argsBean.getHoldName();
-        producer = "Archon";
-        entity = "Archon";
-        this.namespace = "urn:x-emc:eas:schema:" + holding + ":1.0";
+        producer = "Archon_Entity";
+        entity = "Archon_Producer";
+        this.namespace = "urn:x-emc:ia:schema:" + holding + ":1.0";
         this.sipFileName = argsBean.getMainTable();
         create();
     }

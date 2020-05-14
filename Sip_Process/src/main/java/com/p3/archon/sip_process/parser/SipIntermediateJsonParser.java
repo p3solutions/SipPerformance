@@ -57,7 +57,7 @@ public class SipIntermediateJsonParser {
     @SneakyThrows
     private void initializeCSvReader() {
         CSVParser parser;
-        parser = new CSVParserBuilder().withSeparator('|')
+        parser = new CSVParserBuilder().withSeparator('�')
                 .withFieldAsNull(CSVReaderNullFieldIndicator.BOTH).withIgnoreLeadingWhiteSpace(true)
                 .withIgnoreQuotations(false).withQuoteChar('"').withStrictQuotes(false).build();
         csvReader = new CSVReaderBuilder(new FileReader(fileLocationWithName))

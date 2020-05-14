@@ -79,7 +79,7 @@ public class PdiSchemaGeneratorRussianDoll {
 
 
     public String generateNameSpace(String holding) {
-        return URI.create("urn:x-emc:eas:schema:" + holding + ":1.0").toString();
+        return URI.create("urn:x-emc:ia:schema:" + holding + ":1.0").toString();
     }
 
     private void createSchema(String tableName) throws IOException {
@@ -189,7 +189,7 @@ public class PdiSchemaGeneratorRussianDoll {
             //case Types.DATETIME":
             case Types.TIMESTAMP:
             case Types.TIMESTAMP_WITH_TIMEZONE:
-                /*  case Types.TIMESTAMP WITH LOCAL TIME ZONE:
+                /*case Types.TIMESTAMP WITH LOCAL TIME ZONE:
                  case Types.SMALLDATETIME":*/
                 return "xs:string";
             default:

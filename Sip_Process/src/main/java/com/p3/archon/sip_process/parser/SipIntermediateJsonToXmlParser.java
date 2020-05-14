@@ -196,20 +196,29 @@ public class SipIntermediateJsonToXmlParser {
     }
 
     private void createElement(String columnName, String columnValue, int type) {
-        XML_STRING.append("<" + columnName.toUpperCase() + ">" + columnValue + "</" + columnName.toUpperCase() + ">" + NEW_LINE);
-        if (type == Types.TIME_WITH_TIMEZONE || type == Types.TIMESTAMP_WITH_TIMEZONE ||
-                type == Types.TIMESTAMP) {
-            String part1 = columnValue.split(" ")[0];
-            String part2;
-            try {
-                part2 = columnValue.split(" ")[1];
-            } catch (Exception e) {
-                part2 = "00:00:00";
-            }
-            XML_STRING.append("<" + columnName.toUpperCase() + "_DT_COMPATIBLE createdBy=\"DL\"" + ">" + part1.trim() + "T" + part2.substring(0, 8).trim() + "</" + columnName.toUpperCase() + "_DT_COMPATIBLE>");
-        }
 
+        if (!columnValue.equalsIgnoreCase("NULL VALUE")) {
+            if (type == Types.TIME_WITH_TIMEZONE || type == Types.TIMESTAMP_WITH_TIMEZONE ||
+                    type == Types.TIMESTAMP) {
+                writeDateKindData(columnName, columnValue);
+            } else if (type == Types.DATE || columnName.equalsIgnoreCase("DATE")) {
+                if (inputBean.isShowDatetime()) {
+                    writeDateKindData(columnName, columnValue);
+                } else {
+                    writeNormalData(columnName, columnValue);
+                }
+            } else {
+                writeNormalData(columnName, columnValue);
+            }
+        }
     }
 
+    private void writeNormalData(String columnName, String columnValue) {
+        XML_STRING.append("<" + columnName.toUpperCase() + ">" + columnValue + "</" + columnName.toUpperCase() + ">" + NEW_LINE);
+    }
 
+    private void writeDateKindData(String columnName, String columnValue) {
+        writeNormalData(columnName, columnValue);
+        XML_STRING.append("<" + columnName.toUpperCase() + "_DT_COMPATIBLE createdBy=\"DL\"" + ">" + columnValue.trim() + "T" + columnValue.substring(0, 8).trim() + "</" + columnName.toUpperCase() + "_DT_COMPATIBLE>" + NEW_LINE);
+    }
 }

@@ -52,6 +52,8 @@ public class InputArgs {
     private int threadCount;
     @Option(name = "-ptc", aliases = {"--ptc"}, usage = "pathThreadCount", required = true)
     private int pathThreadCount;
+    @Option(name = "-st", aliases = {"--st"}, usage = "show date time", required = true)
+    private boolean showDatetime;
 
 
     public void validateInputs() {

@@ -214,4 +214,8 @@ public class PathandQueryCreator {
     public TableDetails getTableDetailsBasedOnTableName(String tableName) {
         return tablewithRelationBean.getTableList().stream().filter(tableDetails -> tableDetails.getName().equalsIgnoreCase(tableName)).findFirst().orElse(new TableDetails());
     }
+
+    public TreeMap<String, String> getCharacterReplacementMap() {
+        return tablewithRelationBean.charReplace;
+    }
 }
