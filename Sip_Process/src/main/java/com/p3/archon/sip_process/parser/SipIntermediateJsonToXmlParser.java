@@ -1,6 +1,7 @@
 package com.p3.archon.sip_process.parser;
 
 import com.p3.archon.sip_process.bean.InputArgs;
+import com.p3.archon.sip_process.bean.PerformanceStatisticsReport;
 import com.p3.archon.sip_process.bean.RecordData;
 import com.p3.archon.sip_process.core.SipCreator;
 import com.p3.archon.sip_process.utility.Utility;
@@ -10,10 +11,13 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.sql.Types;
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+
+import static com.p3.archon.sip_process.constants.FileNameConstant.*;
 
 /**
  * Created by Suriyanarayanan K
@@ -33,20 +37,26 @@ public class SipIntermediateJsonToXmlParser {
     private StringBuffer XML_STRING = new StringBuffer();
     private SipCreator sipCreator;
     private Map<String, Integer> columnDataTypeMap;
+    List<String> attachmentFiles;
+    private String attachmentFileLocation;
+    PerformanceStatisticsReport performanceStatisticsReport;
 
     @SneakyThrows
-    public SipIntermediateJsonToXmlParser(InputArgs inputBean, SipCreator sipCreator, Map<String, Integer> columnDataTypeMap) {
+    public SipIntermediateJsonToXmlParser(InputArgs inputBean, SipCreator sipCreator, Map<String, Integer> columnDataTypeMap, PerformanceStatisticsReport performanceStatisticsReport) {
         this.inputBean = inputBean;
         this.outputLocation = inputBean.getOutputLocation();
         this.columnDataTypeMap = columnDataTypeMap;
         this.mainTable = inputBean.getMainTable();
         this.sipCreator = sipCreator;
+        this.attachmentFileLocation = inputBean.getOutputLocation() + File.separator + ATTACHMENT_FOLDER + File.separator;
+        this.performanceStatisticsReport = performanceStatisticsReport;
         getIntermediateFileList();
     }
 
     private void getIntermediateFileList() {
-        File file = new File(outputLocation);
-        File[] filesList = file.listFiles((dir, name) -> !name.toLowerCase().startsWith("final_json") && name.toLowerCase().endsWith(".json"));
+        File outputDirectory = new File(outputLocation);
+
+        File[] filesList = outputDirectory.listFiles((dir, name) -> name.startsWith(INTERMEDIATE_JSON_FILE) && name.toLowerCase().endsWith(JSON));
         for (File files : filesList) {
             fileNamesList.add(files.getName());
         }
@@ -136,17 +146,18 @@ public class SipIntermediateJsonToXmlParser {
 
 
     @SneakyThrows
-    public void createXMlDocument() {
-        File file = new File(Utility.getFileName(outputLocation, "final_json", 0, ".json"));
+    public long createXMlDocument() {
+        attachmentFiles = new ArrayList<>();
+        File file = new File(Utility.getFileName(outputLocation, FINAL_JSON_FILE, 0, JSON));
         if (file.exists()) {
             file.delete();
         }
-        PrintWriter finalJsonWriter = new PrintWriter(Utility.getFileName(outputLocation, "final_json", 0, ".json"));
+        PrintWriter finalJsonWriter = new PrintWriter(Utility.getFileName(outputLocation, FINAL_JSON_FILE, 0, JSON));
         Utility.fileCreatorWithContent(finalJsonWriter, mergedJsonObject.toString());
-        JsonToXmlParser(mergedJsonObject.getJSONObject(mainTable), mainTable);
+        return JsonToXmlParser(mergedJsonObject.getJSONObject(mainTable), mainTable);
     }
 
-    private void JsonToXmlParser(JSONObject mergedJsonObject, String tableName) throws IOException {
+    private long JsonToXmlParser(JSONObject mergedJsonObject, String tableName) throws IOException {
 
         if (!mainTable.equalsIgnoreCase(tableName)) {
             XML_STRING.append("<TABLE_" + tableName.toUpperCase() + ">" + NEW_LINE);
@@ -154,18 +165,21 @@ public class SipIntermediateJsonToXmlParser {
         for (String rowValue : Utility.getSetToList(mergedJsonObject.keySet())) {
             parseTableRowElements(mergedJsonObject, tableName, rowValue);
             if (mainTable.equalsIgnoreCase(tableName)) {
-                getMainTableRowEnd();
+                return getMainTableRowEnd();
             }
         }
         if (!mainTable.equalsIgnoreCase(tableName)) {
             XML_STRING.append("</TABLE_" + tableName.toUpperCase() + ">" + NEW_LINE);
         }
+        return 0;
     }
 
-    private void getMainTableRowEnd() throws IOException {
+    private long getMainTableRowEnd() throws IOException {
 
-        sipCreator.getBatchAssembler().add(RecordData.builder().data(XML_STRING.toString()).attachements(new ArrayList<>()).build());
+        long batchAssemblerAddTime = System.currentTimeMillis();
+        sipCreator.getBatchAssembler().add(RecordData.builder().data(XML_STRING.toString()).attachmentFiles(attachmentFiles).build());
         XML_STRING.delete(0, XML_STRING.length());
+        return (System.currentTimeMillis() - batchAssemblerAddTime);
     }
 
     private void parseTableRowElements(JSONObject mergedJsonObject, String tableName, String rowValue) throws IOException {
@@ -188,14 +202,19 @@ public class SipIntermediateJsonToXmlParser {
                     if (rowJsonObject.get(columnKeys) instanceof JSONObject) {
                         relationShipTablesList.add(columnKeys);
                     } else {
-                        createElement(columnKeys.split("\\.")[1], getXmlValidChar(rowJsonObject.getString(columnKeys)).trim(), columnDataTypeMap.get(columnKeys));
+                        try {
+                            createElement(columnKeys.split("\\.")[1], rowJsonObject.getString(columnKeys).trim(), columnDataTypeMap.get(columnKeys));
+                        } catch (UnsupportedEncodingException e) {
+                            e.printStackTrace();
+                        }
                     }
                 }
         );
         return relationShipTablesList;
     }
 
-    private void createElement(String columnName, String columnValue, int type) {
+    private void createElement(String columnName, String columnValue, int type) throws UnsupportedEncodingException {
+
 
         if (!columnValue.equalsIgnoreCase("NULL VALUE")) {
             if (type == Types.TIME_WITH_TIMEZONE || type == Types.TIMESTAMP_WITH_TIMEZONE ||
@@ -207,8 +226,12 @@ public class SipIntermediateJsonToXmlParser {
                 } else {
                     writeNormalData(columnName, columnValue);
                 }
-            } else {
+            } else if (type == Types.BLOB || type == Types.LONGVARBINARY || type == Types.VARBINARY) {
+                attachmentFiles.add(attachmentFileLocation + columnValue);
+            } else if (type == Types.CLOB) {
                 writeNormalData(columnName, columnValue);
+            } else {
+                writeNormalData(columnName, getXmlValidChar(columnValue));
             }
         }
     }

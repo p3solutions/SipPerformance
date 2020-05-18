@@ -18,6 +18,9 @@ import java.io.PrintWriter;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.p3.archon.sip_process.constants.FileNameConstant.INTERMEDIATE_JSON_FILE;
+import static com.p3.archon.sip_process.constants.FileNameConstant.JSON;
+
 /**
  * Created by Suriyanarayanan K
  * on 23/04/20 12:12 PM.
@@ -75,7 +78,7 @@ public class SipIntermediateJsonParser {
         List<String> previousLine = parseAllLinesAndPrepareIntermediateJson(rootTableJson, mainTableRowRecordValue, previousLineRecord);
         PrintWriter intermediateJsonWriter = null;
         try {
-            intermediateJsonWriter = new PrintWriter(Utility.getFileName(outputLocation, "IntermediateJson_", fileCounter, "json"));
+            intermediateJsonWriter = new PrintWriter(Utility.getFileName(outputLocation, INTERMEDIATE_JSON_FILE, fileCounter, JSON));
         } catch (FileNotFoundException e) {
             LOGGER.error("IntermediateJson File Not Found : " + e.getMessage());
         }
@@ -105,15 +108,6 @@ public class SipIntermediateJsonParser {
                 }
             } while ((line = csvReader.readNext()) != null);
 
-
-            /*while ((line = csvReader.readNext()) != null) {
-                if (checkMatching(line, mainTableRowRecordValue)) {
-                    parseJsonResult(rootTableJson.getJSONObject(tablesList.get(0)), line, tableColumnCount, tablesList, tablesList.get(0), new ArrayList<>(), 0, 0, 0);
-                } else {
-                    returnPreviousList = Arrays.asList(line);
-                    break;
-                }
-            }*/
         } catch (IOException | CsvValidationException e) {
             LOGGER.error("IntermediateJson File Not Found : " + e.getMessage());
         }
@@ -187,10 +181,6 @@ public class SipIntermediateJsonParser {
 
     private void createColumnValuePair(String[] line, Map<String, Long> tableColumnValues, String tableName, int lineStartPositon, JSONObject columnValuePair) {
         List<String> tempHeader = headerList.stream().filter(header -> header.startsWith(tableName + ".")).collect(Collectors.toList());
-        /*System.out.println(Arrays.asList((Arrays.asList(line).subList(lineStartPositon, ((int) (lineStartPositon + tableColumnValues.get(tableName))))).toString()));
-        System.out.println(Arrays.asList((Arrays.asList(line).subList(lineStartPositon, ((int) (lineStartPositon + tableColumnValues.get(tableName))))).toString().replace("[", "").replace("]", "").split("|")));
-        List<String> values = Arrays.asList((Arrays.asList(line).subList(lineStartPositon, ((int) (lineStartPositon + tableColumnValues.get(tableName))))).toString().replace("[", "").replace("]", "").split("|"));
-        */
         List<String> values = Arrays.asList(line).subList(lineStartPositon, ((int) (lineStartPositon + tableColumnValues.get(tableName))));
         for (int j = 0; j < tempHeader.size(); j++) {
             if (j > values.size() - 1) {

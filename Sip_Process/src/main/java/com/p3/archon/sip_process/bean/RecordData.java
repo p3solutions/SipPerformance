@@ -10,6 +10,6 @@ import java.util.List;
 @Setter
 @ToString
 public class RecordData {
-	private String data;
-	private List<String> attachements;
+    private String data;
+    private List<String> attachmentFiles;
 }

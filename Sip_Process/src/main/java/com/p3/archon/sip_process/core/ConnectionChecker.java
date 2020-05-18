@@ -1,6 +1,7 @@
 package com.p3.archon.sip_process.core;
 
 import com.p3.archon.sip_process.bean.InputArgs;
+import lombok.SneakyThrows;
 import org.apache.log4j.Logger;
 
 import java.sql.Connection;
@@ -18,7 +19,7 @@ public class ConnectionChecker {
     private Logger LOGGER = Logger.getLogger(this.getClass().getName());
 
     public String getConnectionString(InputArgs inputArgs) {
-        Object[] replaceValues = new Object[]{inputArgs.getHost(), inputArgs.getPort(), inputArgs.getDatabase()};
+        Object[] replaceValues = new Object[]{inputArgs.getHostName(), inputArgs.getPortNo(), inputArgs.getDatabaseName()};
         return MessageFormat.format(getConnectionURL(inputArgs.getDatabaseServer().toLowerCase()), replaceValues);
     }
 
@@ -74,18 +75,21 @@ public class ConnectionChecker {
         return driverClass;
     }
 
+    @SneakyThrows
     public Connection checkConnection(InputArgs inputArgs) {
 
         try {
             Class.forName(getForName(inputArgs.getDatabaseServer().toLowerCase()));
             DriverManager.setLoginTimeout(6000);
             con = DriverManager.getConnection(getConnectionString(inputArgs), inputArgs.getUser(), inputArgs.getPass());
-            if (con == null) {
-            }
+
         } catch (SQLException e) {
             LOGGER.error("SQLException:" + e.getMessage());
         } catch (ClassNotFoundException e) {
             LOGGER.error("ClassNotFoundException:" + e.getMessage());
+        }
+        if (con == null) {
+            throw new Exception("Connection not established");
         }
         return con;
     }

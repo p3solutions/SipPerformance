@@ -32,12 +32,14 @@ public class PdiSchemaGeneratorRussianDoll {
     private TablewithRelationBean tablewithRelationBean;
     private Map<String, Integer> columnDataTypeMap;
     private InputArgs argsBean;
+    private boolean showDateTime;
 
     public PdiSchemaGeneratorRussianDoll(InputArgs argsBean, Map<String, Integer> columnDataTypeMap) throws IOException {
         this.columnDataTypeMap = columnDataTypeMap;
         this.mainTable = argsBean.getMainTable();
         this.nameSpace = generateNameSpace(argsBean.getHoldName());
         this.argsBean = argsBean;
+        this.showDateTime = argsBean.isShowDatetime();
     }
 
 
@@ -199,7 +201,7 @@ public class PdiSchemaGeneratorRussianDoll {
 
     private boolean isDateKindDataType(String column) {
         int type = columnDataTypeMap.get(column);
-        if (type == Types.DATE || type == Types.TIME_WITH_TIMEZONE || type == Types.TIMESTAMP_WITH_TIMEZONE ||
+        if ((type == Types.DATE && showDateTime) || type == Types.TIME_WITH_TIMEZONE || type == Types.TIMESTAMP_WITH_TIMEZONE ||
                 type == Types.TIMESTAMP) {
             return true;
         } else {

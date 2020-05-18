@@ -21,6 +21,8 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.*;
 
+import static com.p3.archon.sip_process.constants.FileNameConstant.ATTACHMENT_FOLDER;
+
 /**
  * Created by Suriyanarayanan K
  * on 14/05/20 2:23 PM.
@@ -30,9 +32,11 @@ public class RowObjectCreator {
     private ResultSetMetaData resultSetMetaData;
     private String NULL_VALUE = "NULL VALUE";
     private boolean showLobs = true;
+
     private long totalStringRecordWriteTime = 0;
     private long totalBlobWriteTime = 0;
     private long totalClobWriteTime = 0;
+
     private long stringRecordCounter = 0;
     private long clobCounter = 0;
     private long blobCounter = 0;
@@ -46,7 +50,7 @@ public class RowObjectCreator {
 
     public RowObjectCreator(ResultSetMetaData resultSetMetaData, String attachmentLocation, TreeMap<String, String> charReplacement, boolean isShowDateTime) {
         this.resultSetMetaData = resultSetMetaData;
-        this.attachmenFolderName = attachmentLocation + File.separator + "recordAttachements";
+        this.attachmenFolderName = attachmentLocation + File.separator + ATTACHMENT_FOLDER;
         new File(attachmenFolderName).mkdirs();
         this.charReplacement = charReplacement;
         this.isShowDateTime = isShowDateTime;
@@ -59,6 +63,7 @@ public class RowObjectCreator {
             Object columnData;
             long startTimeRec;
             final Blob blob;
+
             switch (type) {
                 case Types.CLOB:
                     startTimeRec = System.currentTimeMillis();
@@ -291,29 +296,20 @@ public class RowObjectCreator {
             return NULL_VALUE;
         else {
             try {
-                String validfilename = UUID.randomUUID().toString().substring(0, 14) + new Date().getTime();
-                String file = attachmenFolderName + File.separator + validfilename;
+                String validFileName = UUID.randomUUID().toString().substring(0, 14) + new Date().getTime();
+                String fileName = attachmenFolderName + File.separator + validFileName;
                 BinaryData data = ((BinaryData) columnData);
-                // InputStream is = new
-                // ByteArrayInputStream(data.toString().getBytes(Charset.forName("UTF-8")));
-                // MimeTypeDetector detector = new MimeTypeDetector();
-                // String mimetype = detector.detectMimeType(file, is);
-                // String type = MimeTypeMapping.mimeTypeToExtension(mimetype);
-                // file = file + type;
-
                 InputStream in = data.getBlob().getBinaryStream();
-                OutputStream out = new FileOutputStream(file);
+                OutputStream out = new FileOutputStream(fileName);
                 byte[] buff = new byte[1024];
                 int len = 0;
-
                 while ((len = in.read(buff)) != -1) {
                     out.write(buff, 0, len);
                 }
-
                 out.flush();
                 out.close();
                 in.close();
-                return validfilename; // + type;
+                return validFileName; // + type;
             } catch (Exception e) {
                 e.printStackTrace();
                 return NULL_VALUE;
@@ -511,5 +507,29 @@ public class RowObjectCreator {
         }
         final Reader reader = new InputStreamReader(stream, StandardCharsets.UTF_8);
         return readFully(reader);
+    }
+
+    public long getTotalStringRecordWriteTime() {
+        return totalStringRecordWriteTime;
+    }
+
+    public long getTotalBlobWriteTime() {
+        return totalBlobWriteTime;
+    }
+
+    public long getTotalClobWriteTime() {
+        return totalClobWriteTime;
+    }
+
+    public long getStringRecordCounter() {
+        return stringRecordCounter;
+    }
+
+    public long getClobCounter() {
+        return clobCounter;
+    }
+
+    public long getBlobCounter() {
+        return blobCounter;
     }
 }
