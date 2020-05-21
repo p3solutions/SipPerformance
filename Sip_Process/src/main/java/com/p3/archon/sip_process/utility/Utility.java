@@ -6,10 +6,7 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
@@ -57,4 +54,17 @@ public class Utility {
                 ? (((string.charAt(0) >= '0' && string.charAt(0) <= '9') ? "_" : "") + string).toUpperCase()
                 : string;
     }
+
+    public static String getMainTablePrimaryColumnQuery(List<String> mainTablePrimaryKeyColumns) {
+        List<String> COLUMN_STRING = new ArrayList<>();
+        for (String column : mainTablePrimaryKeyColumns) {
+            COLUMN_STRING.add(column + " as \"" + column + "\"");
+        }
+        return String.join(",", COLUMN_STRING).isEmpty() ? " * " : String.join(",", COLUMN_STRING);
+    }
+
+    public static String LoggerPrintFor10000Line(long count) {
+        return "======================================================" + "\n" + "" + "\n" + count + " Processed" + "\n" + "" + "\n" + "======================================================";
+    }
+
 }

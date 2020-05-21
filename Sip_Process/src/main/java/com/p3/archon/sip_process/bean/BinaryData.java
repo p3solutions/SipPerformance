@@ -29,6 +29,10 @@ package com.p3.archon.sip_process.bean;
 
 import java.sql.Blob;
 
+/**
+ * Created by Suriyanarayanan K
+ * on 08/05/20 3:17 PM.
+ */
 public class BinaryData {
 
 	private final boolean hasData;

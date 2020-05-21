@@ -1,6 +1,7 @@
 package com.p3.archon.sip_process.core;
 
 import com.p3.archon.sip_process.bean.BinaryData;
+import org.apache.log4j.Logger;
 import org.apache.xmlbeans.impl.common.XMLChar;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -21,7 +22,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.*;
 
-import static com.p3.archon.sip_process.constants.FileNameConstant.ATTACHMENT_FOLDER;
+import static com.p3.archon.sip_process.constants.SipPerformanceConstant.*;
 
 /**
  * Created by Suriyanarayanan K
@@ -29,66 +30,47 @@ import static com.p3.archon.sip_process.constants.FileNameConstant.ATTACHMENT_FO
  */
 public class RowObjectCreator {
 
-    private ResultSetMetaData resultSetMetaData;
-    private String NULL_VALUE = "NULL VALUE";
+
     private boolean showLobs = true;
+    private boolean isShowDateTime;
+
+    private long stringRecordCounter = 0;
+    private long clobCounter = 0;
+    private long blobCounter = 0;
 
     private long totalStringRecordWriteTime = 0;
     private long totalBlobWriteTime = 0;
     private long totalClobWriteTime = 0;
 
-    private long stringRecordCounter = 0;
-    private long clobCounter = 0;
-    private long blobCounter = 0;
-    private String attachmenFolderName;
+
+    private Map<String, List<String>> tablePrimaryKeyColumns = new LinkedHashMap<>();
+    private ResultSetMetaData resultSetMetaData;
     private TreeMap<String, String> charReplacement;
-    private boolean isShowDateTime;
-    private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-    private final SimpleDateFormat dateOnlyFormat = new SimpleDateFormat("yyyy-MM-dd");
+
     private DecimalFormat formatter;
-    private String DECIMAL_PATTERN = "#.##########################################################################################################################################################################################################################";
+    private final SimpleDateFormat dateFormat = new SimpleDateFormat(DATE_TIME_FORMAT);
+    private final SimpleDateFormat dateOnlyFormat = new SimpleDateFormat(DATE_FORMAT);
+
+    private String attachmentFolderName;
+    private Logger LOGGER = Logger.getLogger(this.getClass().getName());
 
     public RowObjectCreator(ResultSetMetaData resultSetMetaData, String attachmentLocation, TreeMap<String, String> charReplacement, boolean isShowDateTime) {
         this.resultSetMetaData = resultSetMetaData;
-        this.attachmenFolderName = attachmentLocation + File.separator + ATTACHMENT_FOLDER;
-        new File(attachmenFolderName).mkdirs();
+        this.attachmentFolderName = attachmentLocation + File.separator + ATTACHMENT_FOLDER;
+        new File(attachmentFolderName).mkdirs();
         this.charReplacement = charReplacement;
         this.isShowDateTime = isShowDateTime;
     }
 
-    public List<String> getRowObjectList(ResultSet rs) throws SQLException {
-        List<String> rowObject = new ArrayList<>();
+    public void generateBlobFiles(ResultSet rs) throws SQLException {
+        List fileName = new ArrayList();
         for (int i = 1; i <= resultSetMetaData.getColumnCount(); i++) {
+            String columnName = resultSetMetaData.getColumnLabel(i);
             int type = resultSetMetaData.getColumnType(i);
-            Object columnData;
             long startTimeRec;
+            Object columnData;
             final Blob blob;
-
             switch (type) {
-                case Types.CLOB:
-                    startTimeRec = System.currentTimeMillis();
-                    final Clob clob = rs.getClob(i);
-                    if (rs.wasNull() || clob == null) {
-                        columnData = null;
-                    } else {
-                        clobCounter++;
-                        columnData = readClob(clob, null);
-                    }
-                    rowObject.add(getCdataString(columnData));
-                    totalClobWriteTime += (System.currentTimeMillis() - startTimeRec);
-                    break;
-                case Types.NCLOB:
-                    startTimeRec = System.currentTimeMillis();
-                    final NClob nClob = rs.getNClob(i);
-                    if (rs.wasNull() || nClob == null) {
-                        columnData = null;
-                    } else {
-                        clobCounter++;
-                        columnData = readClob(nClob, null);
-                    }
-                    rowObject.add((getCdataString(columnData)));
-                    totalClobWriteTime += (System.currentTimeMillis() - startTimeRec);
-                    break;
                 case Types.BLOB:
                     startTimeRec = System.currentTimeMillis();
                     blob = rs.getBlob(i);
@@ -98,7 +80,7 @@ public class RowObjectCreator {
                         blobCounter++;
                         columnData = readBlob(blob);
                     }
-                    rowObject.add(getBlobInfo(columnData));
+                    getBlobInfo(columnData, columnName, String.join("_", fileName));
                     totalBlobWriteTime += (System.currentTimeMillis() - startTimeRec);
                     break;
                 case Types.LONGVARBINARY:
@@ -112,7 +94,105 @@ public class RowObjectCreator {
                         blobCounter++;
                         columnData = readStream(stream, blob);
                     }
-                    rowObject.add(getBlobInfo(columnData));
+                    getBlobInfo(columnData, columnName, String.join("__", fileName));
+                    totalBlobWriteTime += (System.currentTimeMillis() - startTimeRec);
+                    break;
+                default:
+                    fileName.add(getStringFromObjectValue(rs, i));
+                    break;
+            }
+        }
+
+    }
+
+    private void getBlobInfo(Object columnData, String columnName, String primaryKeyValues) {
+        if (columnData != null) {
+            try {
+                String validFileName = getValidNameForThatFile(columnName, primaryKeyValues);
+                LOGGER.debug("File Name :" + validFileName);
+
+                String fileName = attachmentFolderName + File.separator + validFileName;
+                if (!new File(fileName).exists()) {
+                    BinaryData data = ((BinaryData) columnData);
+                    InputStream in = data.getBlob().getBinaryStream();
+                    OutputStream out = new FileOutputStream(fileName);
+                    byte[] buff = new byte[1024];
+                    int len = 0;
+                    while ((len = in.read(buff)) != -1) {
+                        out.write(buff, 0, len);
+                    }
+                    out.flush();
+                    out.close();
+                    in.close();
+                } else {
+                }
+            } catch (Exception e) {
+            }
+        }
+    }
+
+    private String getValidNameForThatFile(String columnName, String primaryKeyValues) {
+        return columnName.trim().replace(".", "__") + "__" + primaryKeyValues;
+    }
+
+    public List<String> getRowObjectList(ResultSet rs) throws SQLException {
+
+        Map<String, String> keyPairRecordValues = new LinkedHashMap<>();
+        for (int i = 1; i <= resultSetMetaData.getColumnCount(); i++) {
+            String columnName = resultSetMetaData.getColumnLabel(i);
+            int type = resultSetMetaData.getColumnType(i);
+            Object columnData;
+            long startTimeRec;
+            final Blob blob;
+            switch (type) {
+                case Types.CLOB:
+                    startTimeRec = System.currentTimeMillis();
+                    final Clob clob = rs.getClob(i);
+                    if (rs.wasNull() || clob == null) {
+                        columnData = null;
+                    } else {
+                        clobCounter++;
+                        columnData = readClob(clob, null);
+                    }
+                    keyPairRecordValues.put(columnName.trim(), getCdataString(columnData));
+                    totalClobWriteTime += (System.currentTimeMillis() - startTimeRec);
+                    break;
+                case Types.NCLOB:
+                    startTimeRec = System.currentTimeMillis();
+                    final NClob nClob = rs.getNClob(i);
+                    if (rs.wasNull() || nClob == null) {
+                        columnData = null;
+                    } else {
+                        clobCounter++;
+                        columnData = readClob(nClob, null);
+                    }
+                    keyPairRecordValues.put(columnName.trim(), (getCdataString(columnData)));
+                    totalClobWriteTime += (System.currentTimeMillis() - startTimeRec);
+                    break;
+                case Types.BLOB:
+                    startTimeRec = System.currentTimeMillis();
+                    blob = rs.getBlob(i);
+                    if (rs.wasNull() || blob == null) {
+                        columnData = null;
+                    } else {
+                        blobCounter++;
+                        columnData = readBlob(blob);
+                    }
+                    keyPairRecordValues.put(columnName.trim(), getBlobInfo(columnData, columnName, keyPairRecordValues));
+                    totalBlobWriteTime += (System.currentTimeMillis() - startTimeRec);
+                    break;
+                case Types.LONGVARBINARY:
+                case Types.VARBINARY:
+                    startTimeRec = System.currentTimeMillis();
+                    final InputStream stream = rs.getBinaryStream(i);
+                    blob = rs.getBlob(i);
+                    if (rs.wasNull() || stream == null) {
+                        columnData = new String();
+                    } else {
+                        blobCounter++;
+                        columnData = readStream(stream, blob);
+                    }
+                    keyPairRecordValues.put(columnName.trim(), getBlobInfo(columnData, columnName, keyPairRecordValues));
                     totalBlobWriteTime += (System.currentTimeMillis() - startTimeRec);
                     break;
                 case Types.DATE:
@@ -137,9 +217,9 @@ public class RowObjectCreator {
                         }
                     }
                     if (isShowDateTime) {
-                        rowObject.add(getDateValue(columnData.toString()));
+                        keyPairRecordValues.put(columnName.trim(), getDateValue(columnData.toString()));
                     } else
-                        rowObject.add(getXmlValidStringData(columnData.toString()));
+                        keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString()));
                     totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
                     break;
                 case Types.TIMESTAMP:
@@ -161,7 +241,7 @@ public class RowObjectCreator {
                             columnData = rs.getTimestamp(i);
                         }
                     }
-                    rowObject.add(getDateValue(columnData.toString()));
+                    keyPairRecordValues.put(columnName.trim(), getDateValue(columnData.toString()));
                     totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
                     break;
                 case Types.BIT:
@@ -175,7 +255,7 @@ public class RowObjectCreator {
                         columnData = stringValue.equalsIgnoreCase(Boolean.toString(booleanValue)) ? booleanValue
                                 : stringValue;
                     }
-                    rowObject.add(getXmlValidStringData(columnData.toString()));
+                    keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString()));
                     totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
                     break;
                 case Types.FLOAT:
@@ -193,7 +273,7 @@ public class RowObjectCreator {
                             formatter = new DecimalFormat("#");
                         columnData = formatter.format(value);
                     }
-                    rowObject.add(getXmlValidStringData(columnData.toString()));
+                    keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString()));
                     totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
                     break;
                 case Types.DOUBLE:
@@ -210,16 +290,30 @@ public class RowObjectCreator {
                             formatter = new DecimalFormat("#");
                         columnData = formatter.format(value);
                     }
-                    rowObject.add(getXmlValidStringData(columnData.toString()));
+                    keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString()));
                     totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
                     break;
                 default:
                     startTimeRec = System.currentTimeMillis();
-                    rowObject.add(getStringFromObjectValue(rs, i));
+                    keyPairRecordValues.put(columnName.trim(), getStringFromObjectValue(rs, i));
                     totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
             }
         }
-        return rowObject;
+        return new ArrayList<>(keyPairRecordValues.values());
+    }
+
+    private String getBlobInfo(Object columnData, String columnName, Map<String, String> keyPairRecordValues) throws SQLException {
+        List fileNameSuffixList = new ArrayList();
+        if (columnData == null) {
+            return NULL_VALUE;
+        } else {
+            if (tablePrimaryKeyColumns != null && tablePrimaryKeyColumns.get(columnName.split("\\.")[0].trim()) != null) {
+                for (String tablePrimaryColumn : tablePrimaryKeyColumns.get(columnName.split("\\.")[0].trim())) {
+                    fileNameSuffixList.add(keyPairRecordValues.get(tablePrimaryColumn.trim()));
+                }
+            }
+        }
+        return getValidNameForThatFile(columnName, String.join("__", fileNameSuffixList));
     }
 
     private String getStringFromObjectValue(ResultSet rs, int i) throws SQLException {
@@ -288,32 +382,6 @@ public class RowObjectCreator {
             return lobData;
         } else {
             return new BinaryData();
-        }
-    }
-
-    private String getBlobInfo(Object columnData) {
-        if (columnData == null)
-            return NULL_VALUE;
-        else {
-            try {
-                String validFileName = UUID.randomUUID().toString().substring(0, 14) + new Date().getTime();
-                String fileName = attachmenFolderName + File.separator + validFileName;
-                BinaryData data = ((BinaryData) columnData);
-                InputStream in = data.getBlob().getBinaryStream();
-                OutputStream out = new FileOutputStream(fileName);
-                byte[] buff = new byte[1024];
-                int len = 0;
-                while ((len = in.read(buff)) != -1) {
-                    out.write(buff, 0, len);
-                }
-                out.flush();
-                out.close();
-                in.close();
-                return validFileName; // + type;
-            } catch (Exception e) {
-                e.printStackTrace();
-                return NULL_VALUE;
-            }
         }
     }
 
@@ -531,5 +599,13 @@ public class RowObjectCreator {
 
     public long getBlobCounter() {
         return blobCounter;
+    }
+
+    public Map<String, List<String>> getTablePrimaryKeyColumns() {
+        return tablePrimaryKeyColumns;
+    }
+
+    public void setTablePrimaryKeyColumns(Map<String, List<String>> tablePrimaryKeyColumns) {
+        this.tablePrimaryKeyColumns = tablePrimaryKeyColumns;
     }
 }

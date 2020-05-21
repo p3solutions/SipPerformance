@@ -10,6 +10,7 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Created by Suriyanarayanan K
@@ -21,13 +22,16 @@ public class PathandQueryCreator {
     private String mainTable;
     private TablewithRelationBean tablewithRelationBean;
     private String schemaName;
-
+    private Map<Integer, List<String>> pathTableList = new LinkedHashMap<>();
     private Logger LOGGER = Logger.getLogger(this.getClass().getName());
 
+
     public PathandQueryCreator(InputArgs inputBean) {
+
         this.jsonFileLocation = inputBean.getJsonFile();
         this.mainTable = inputBean.getMainTable();
         this.schemaName = inputBean.getSchemaName();
+        createTableBeanAndRequiredCombinationMap();
     }
 
 
@@ -36,7 +40,7 @@ public class PathandQueryCreator {
      */
     public Map<Integer, List<String>> startParsingAndCreationPathList() {
         LOGGER.info("Start Creating Path and Query List");
-        createTableBeanAndRequiredCombinationMap();
+
         return createPathList();
     }
 
@@ -46,7 +50,6 @@ public class PathandQueryCreator {
     private Map<Integer, List<String>> createPathList() {
         Set<String> checkedList = new HashSet<>();
         checkedList.add(mainTable);
-        Map<Integer, List<String>> pathTableList = new LinkedHashMap<>();
         int count = 0;
         for (String path : addChildElementIntoTree(mainTable, checkedList)) {
             pathTableList.put(count, Arrays.asList(path.split("->")));
@@ -212,10 +215,147 @@ public class PathandQueryCreator {
      * Responsible for getting TableDetails Bean
      */
     public TableDetails getTableDetailsBasedOnTableName(String tableName) {
-        return tablewithRelationBean.getTableList().stream().filter(tableDetails -> tableDetails.getName().equalsIgnoreCase(tableName)).findFirst().orElse(new TableDetails());
+        return tablewithRelationBean.getTableList().stream().filter(tableDetails -> tableDetails.getName().equalsIgnoreCase(tableName)).findFirst().orElse(
+                new TableDetails());
     }
 
     public TreeMap<String, String> getCharacterReplacementMap() {
         return tablewithRelationBean.charReplace;
+    }
+
+    public List<String> getBlobQueryList(Integer key, Map<String, List<String>> tablePrimaryKey) {
+        List<String> checkedTableList = new ArrayList<>();
+        checkedTableList.addAll(prepareTemporarycheckedList(pathTableList.get(key)));
+        List<String> blobQueryList = prepareBlobQueryListForAllTable("", mainTable, checkedTableList, tablePrimaryKey, new ArrayList<String>());
+        return blobQueryList;
+    }
+
+    private List<String> prepareTemporarycheckedList(List<String> pathTableList) {
+        List<String> temporaryTableList = new ArrayList<>();
+        pathTableList.forEach(table -> temporaryTableList.add(table.split("\\.")[1]));
+        return temporaryTableList;
+    }
+
+    private List<String> prepareBlobQueryListForAllTable(String parentTable, String childTable, List<String> checkedTableList, Map<String, List<String>> tablePrimaryKey, List<String> parentTableList) {
+        List<String> blobQueryPreparedList = new ArrayList<>();
+        if (checkedTableList.size() == 0) {
+            return blobQueryPreparedList;
+        }
+        parentTableList.add(childTable);
+        checkedTableList.remove(childTable);
+        TableDetails tableDetails = getTableDetailsBasedOnTableName(childTable);
+        if (parentTable.isEmpty()) {
+            if (tableDetails.getBlobColumn() != null && !tableDetails.getBlobColumn().isEmpty()) {
+                blobQueryPreparedList.add("SELECT " +
+                        Utility.getMainTablePrimaryColumnQuery(tablePrimaryKey.get(childTable))
+                        + "," + tableDetails.getBlobColumn() + " FROM " + schemaName + "." + childTable + (tableDetails.getFilterQuery().isEmpty() ? "" : " WHERE ( " + tableDetails.getFilterQuery() + " ) "));
+            }
+        } else {
+            if (tableDetails.getBlobColumn() != null && !tableDetails.getBlobColumn().isEmpty()) {
+                blobQueryPreparedList.add("SELECT " + Utility.getMainTablePrimaryColumnQuery(tablePrimaryKey.get(childTable))
+                        + "," + tableDetails.getBlobColumn() + " FROM " + getTableNamesLine(parentTableList)
+                        + getJoinAndFilterCondition(parentTableList));
+            }
+
+        }
+        if (checkedTableList.size() != 0) {
+            blobQueryPreparedList.addAll(prepareBlobQueryListForAllTable(childTable, checkedTableList.get(0), checkedTableList, tablePrimaryKey, parentTableList));
+        }
+        return blobQueryPreparedList;
+    }
+
+    private String getTableNamesLine(List<String> parentTableList) {
+        return parentTableList.stream().map(table -> schemaName + "." + table).collect(Collectors.joining(","));
+    }
+
+    private String getJoinAndFilterCondition(List<String> parentTableList) {
+        List<String> checkedTableList = new ArrayList<>();
+        checkedTableList.addAll(parentTableList);
+        StringBuffer joinFilterCondition = new StringBuffer();
+        joinFilterCondition.append(" WHERE ( ");
+        joinFilterCondition.append(String.join(" AND ", getJoinsConditionsForAllTable(checkedTableList)));
+        joinFilterCondition.append(getFilterConditionForParentTableList(parentTableList));
+        joinFilterCondition.append(" ) ");
+        return joinFilterCondition.toString();
+    }
+
+    private String getFilterConditionForParentTableList(List<String> parentTableList) {
+        List<String> filterList = new ArrayList<>();
+        for (String table : parentTableList) {
+            if (!getTableDetailsBasedOnTableName(table).getFilterQuery().isEmpty()) {
+                filterList.add(getTableDetailsBasedOnTableName(table).getFilterQuery());
+            }
+        }
+        if (filterList.isEmpty()) {
+            return "";
+        } else {
+            return " AND  ( " + String.join(" AND ", filterList) + " ) ";
+        }
+
+    }
+
+    private List<String> getJoinsConditionsForAllTable(List<String> checkedTableList) {
+        List<String> joinsCondition = new ArrayList<>();
+        String parentTable = checkedTableList.get(0);
+        String childTable = checkedTableList.get(1);
+        TableDetails parentTableDetails = getTableDetailsBasedOnTableName(parentTable);
+        parentTableDetails.getRelationshipList().forEach(
+                relationShip -> {
+                    if (getRelationFetchStatus(childTable, relationShip)) {
+                        joinsCondition.add(relationShip.split("->")[1]);
+                    }
+                }
+        );
+        checkedTableList.remove(parentTable);
+        if (checkedTableList.size() > 1) {
+            joinsCondition.addAll(getJoinsConditionsForAllTable(checkedTableList));
+        }
+        return joinsCondition;
+    }
+
+    public Map<String, List<String>> getPrimaryJoinColumn(List<String> selectedTableList) {
+        Map<String, List<String>> tablePrimaryJoinColumn = new LinkedHashMap<>();
+        for (String tableName : selectedTableList) {
+            TableDetails tableDetails = getTableDetailsBasedOnTableName(tableName);
+            tablePrimaryJoinColumn.put(tableDetails.getName(), tableDetails.getKeyColumns());
+        }
+        return tablePrimaryJoinColumn;
+    }
+
+    public List<String> getSelectedTableList() {
+        return tablewithRelationBean.getSelectedTableList();
+    }
+
+    public String getAllTablesWhereCondition(List<String> selectedTableList) {
+        List<String> filterCondition = new ArrayList<>();
+        for (String tableName : selectedTableList) {
+            TableDetails tableDetails = getTableDetailsBasedOnTableName(tableName);
+            if (!tableDetails.getFilterQuery().isEmpty()) {
+                filterCondition.add(tableDetails.getFilterQuery());
+            }
+        }
+
+        return String.join(" AND ", filterCondition);
+    }
+
+    public String getSingleTableQuery(String mainTableName) {
+
+        StringBuffer SINGLE_TABLE_QUERY = new StringBuffer();
+        SINGLE_TABLE_QUERY.append("SELECT ");
+        TableDetails tableDetails = getTableDetailsBasedOnTableName(mainTableName);
+        SINGLE_TABLE_QUERY.append(tableDetails.getColumnQuery().isEmpty() ? "*" : tableDetails.getColumnQuery());
+        SINGLE_TABLE_QUERY.append(" FROM " + schemaName + "." + mainTableName + " " + (tableDetails.getFilterQuery().isEmpty() ? " " : " WHERE " + tableDetails.getFilterQuery()));
+        return SINGLE_TABLE_QUERY.toString();
+    }
+
+    public List<String> getSingleTableBlobQueryList(String mainTableName, Map<String, List<String>> tablePrimaryJoinColumn) {
+        List<String> blobQueryList = new ArrayList<>();
+        TableDetails tableDetails = getTableDetailsBasedOnTableName(mainTableName);
+        if (!tableDetails.getBlobColumn().isEmpty()) {
+            blobQueryList.add("SELECT " +
+                    Utility.getMainTablePrimaryColumnQuery(tablePrimaryJoinColumn.get(mainTableName))
+                    + "," + tableDetails.getBlobColumn() + " FROM " + schemaName + "." + mainTableName + (tableDetails.getFilterQuery().isEmpty() ? "" : " WHERE ( " + tableDetails.getFilterQuery() + " ) "));
+        }
+        return blobQueryList;
     }
 }

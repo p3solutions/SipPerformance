@@ -1,5 +1,8 @@
 package com.p3.archon.sip_process.bean;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import java.util.List;
 
 /**
@@ -7,51 +10,16 @@ import java.util.List;
  * on 05/05/20 6:43 PM.
  */
 
+@Getter
+@Setter
 public class TableDetails {
 
     private String name;
     private String columnQuery;
+    private String blobColumn;
     private String filterQuery;
+    private List<String> keyColumns;
     private List<String> relatedTables;
     private List<String> relationshipList;
 
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getColumnQuery() {
-        return columnQuery;
-    }
-
-    public void setColumnQuery(String columnQuery) {
-        this.columnQuery = columnQuery;
-    }
-
-    public String getFilterQuery() {
-        return filterQuery;
-    }
-
-    public void setFilterQuery(String filterQuery) {
-        this.filterQuery = filterQuery;
-    }
-
-    public List<String> getRelatedTables() {
-        return relatedTables;
-    }
-
-    public void setRelatedTables(List<String> relatedTables) {
-        this.relatedTables = relatedTables;
-    }
-
-    public List<String> getRelationshipList() {
-        return relationshipList;
-    }
-
-    public void setRelationshipList(List<String> relationshipList) {
-        this.relationshipList = relationshipList;
-    }
 }

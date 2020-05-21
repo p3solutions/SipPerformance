@@ -13,6 +13,7 @@ import java.sql.Types;
 import java.util.*;
 import java.util.stream.Collectors;
 
+
 /**
  * Created by Suriyanarayanan K
  * on 07/05/20 6:43 PM.
@@ -21,8 +22,6 @@ public class PdiSchemaGeneratorRussianDoll {
 
     private Logger LOGGER = Logger.getLogger(this.getClass().getName());
     private Writer pdiSchemaWriter;
-    private static final String PDI_SCHEMA_FILE = "pdi-schema.xsd";
-    private static final String ENCODING = "UTF-8";
     private String nameSpace;
     private int i = 0;
     private String tabSpace = "\n";
@@ -34,7 +33,17 @@ public class PdiSchemaGeneratorRussianDoll {
     private InputArgs argsBean;
     private boolean showDateTime;
 
-    public PdiSchemaGeneratorRussianDoll(InputArgs argsBean, Map<String, Integer> columnDataTypeMap) throws IOException {
+
+    public static final String PDI_SCHEMA_FILE = "pdi-schema.xsd";
+    public static final String ENCODING = "UTF-8";
+    public static final String XML_START_TAG = "<?xml version=\"1.0\" encoding=\"" + ENCODING + "\"?>";
+    public static final String NAMESPACE = "NAMESPACE";
+    public static final String XML_NAMESPACE_TAG = "<xs:schema attributeFormDefault=\"unqualified\" elementFormDefault=\"qualified\" targetNamespace=\"" + NAMESPACE + "\" xmlns=\"urn:x-emc:ia:schema:Soft:1.0\" xmlns:xs=\"http://www.w3.org/2001/XMLSchema\">";
+    public static final String XML_CLOSE_SCHEMA = "\n</xs:schema>";
+
+
+
+    public PdiSchemaGeneratorRussianDoll(InputArgs argsBean, Map<String, Integer> columnDataTypeMap) {
         this.columnDataTypeMap = columnDataTypeMap;
         this.mainTable = argsBean.getMainTable();
         this.nameSpace = generateNameSpace(argsBean.getHoldName());
@@ -56,19 +65,10 @@ public class PdiSchemaGeneratorRussianDoll {
                 path.mkdirs();
             pdiSchemaWriter = new OutputStreamWriter(new FileOutputStream(argsBean.getOutputLocation() + File.separator + PDI_SCHEMA_FILE),
                     ENCODING);
-            pdiSchemaWriter.write("<?xml version=\"1.0\" encoding=\"");
-            pdiSchemaWriter.write(ENCODING);
-            pdiSchemaWriter.write("\"?>");
-            pdiSchemaWriter.write(getTabSpace(level++)
-                    + "<xs:schema attributeFormDefault=\"unqualified\" elementFormDefault=\"qualified\" ");
-            pdiSchemaWriter.write("targetNamespace=\"");
-            pdiSchemaWriter.write(nameSpace + "\" ");
-            pdiSchemaWriter.write("xmlns=\"");
-            pdiSchemaWriter.write(nameSpace + "\" ");
-            pdiSchemaWriter.write("xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"");
-            pdiSchemaWriter.write(">");
+            pdiSchemaWriter.write(XML_START_TAG);
+            pdiSchemaWriter.write(getTabSpace(level++) + XML_NAMESPACE_TAG.replace(NAMESPACE, nameSpace));
             createSchema(mainTable);
-            pdiSchemaWriter.write("\n</xs:schema>");
+            pdiSchemaWriter.write(XML_CLOSE_SCHEMA);
             pdiSchemaWriter.flush();
             pdiSchemaWriter.close();
             LOGGER.info("pdi schema file created at " + argsBean.getOutputLocation() + File.separator + PDI_SCHEMA_FILE + "\n");
@@ -91,12 +91,11 @@ public class PdiSchemaGeneratorRussianDoll {
         if (tableName.equalsIgnoreCase(mainTable))
             pdiSchemaWriter.write(getTabSpace(level++) + "<xs:element name=\"TABLE_" + tableName.toUpperCase() + "\">");
         else
-            pdiSchemaWriter.write(getTabSpace(level++) + "<xs:element maxOccurs=\"1\" minOccurs=\"0\" name=\"TABLE_" + tableName.toUpperCase()
-                    + "\">");
+            pdiSchemaWriter.write(getTabSpace(level++) + "<xs:element maxOccurs=\"1\" minOccurs=\"0\" name=\"TABLE_" + tableName.toUpperCase() + "\">");
+
         pdiSchemaWriter.write(getTabSpace(level++) + "<xs:complexType>");
         pdiSchemaWriter.write(getTabSpace(level++) + "<xs:sequence>");
-        pdiSchemaWriter.write(getTabSpace(level++) + "<xs:element maxOccurs=\"unbounded\" minOccurs=\"0\" name=\"" + tableName.toUpperCase()
-                + "_ROW\">");
+        pdiSchemaWriter.write(getTabSpace(level++) + "<xs:element maxOccurs=\"unbounded\" minOccurs=\"0\" name=\"" + tableName.toUpperCase() + "_ROW\">");
         pdiSchemaWriter.write(getTabSpace(level++) + "<xs:complexType>");
         pdiSchemaWriter.write(getTabSpace(level++) + "<xs:sequence>");
         getColumns(tableName);
@@ -129,16 +128,13 @@ public class PdiSchemaGeneratorRussianDoll {
         for (String column : originalColumnNameList) {
             if (isDateKindDataType(column)) {
                 column = column.split("\\.")[1];
-                pdiSchemaWriter.write(getTabSpace(level) + "<xs:element name=\"" + column.toUpperCase()
-                        + "\" type=\"xs:string\" minOccurs=\"0\"/>");
-                pdiSchemaWriter.write(getTabSpace(level) + "<xs:element name=\"" + column.toUpperCase()
-                        + "_DT_COMPATIBLE\" minOccurs=\"0\">");
+                pdiSchemaWriter.write(getTabSpace(level) + "<xs:element name=\"" + column.toUpperCase() + "\" type=\"xs:string\" minOccurs=\"0\"/>");
+                pdiSchemaWriter.write(getTabSpace(level) + "<xs:element name=\"" + column.toUpperCase() + "_DT_COMPATIBLE\" minOccurs=\"0\">");
                 level++;
                 pdiSchemaWriter.write(getTabSpace(level++) + "<xs:complexType>");
                 pdiSchemaWriter.write(getTabSpace(level++) + "<xs:simpleContent>");
                 pdiSchemaWriter.write(getTabSpace(level++) + "<xs:extension base=\"xs:dateTime\">");
-                pdiSchemaWriter.write(getTabSpace(level++)
-                        + "<xs:attribute name=\"createdBy\" type=\"xs:string\" use=\"optional\"/>");
+                pdiSchemaWriter.write(getTabSpace(level++) + "<xs:attribute name=\"createdBy\" type=\"xs:string\" use=\"optional\"/>");
                 level -= 2;
                 pdiSchemaWriter.write(getTabSpace(level--) + "</xs:extension>");
                 pdiSchemaWriter.write(getTabSpace(level--) + "</xs:simpleContent>");

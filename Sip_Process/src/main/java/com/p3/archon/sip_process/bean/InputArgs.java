@@ -37,6 +37,7 @@ public class InputArgs {
     private int threadCount;
     private int pathThreadCount;
     private boolean showDatetime;
+    private String jobId;
 
 
     public void validateInputs() {

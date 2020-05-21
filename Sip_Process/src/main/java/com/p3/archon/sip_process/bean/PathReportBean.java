@@ -13,10 +13,8 @@ import lombok.*;
 @Setter
 @ToString
 
-public class PathPerformance {
+public class PathReportBean {
 
-    @Builder.Default
-    private long queryTime = 0;
     @Builder.Default
     private long normalCounter = 0;
     @Builder.Default
@@ -30,6 +28,10 @@ public class PathPerformance {
     @Builder.Default
     private long blobTime = 0;
     @Builder.Default
-    private long resultTime = 0;
+    private long dbHitCounter = 0;
+    @Builder.Default
+    private long dbConnectionTime = 0;
+    @Builder.Default
+    private long resultSetTime = 0;
 
 }

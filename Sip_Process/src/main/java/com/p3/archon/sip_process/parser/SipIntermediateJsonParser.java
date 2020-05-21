@@ -18,8 +18,8 @@ import java.io.PrintWriter;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.p3.archon.sip_process.constants.FileNameConstant.INTERMEDIATE_JSON_FILE;
-import static com.p3.archon.sip_process.constants.FileNameConstant.JSON;
+import static com.p3.archon.sip_process.constants.SipPerformanceConstant.INTERMEDIATE_JSON_FILE;
+import static com.p3.archon.sip_process.constants.SipPerformanceConstant.JSON;
 
 /**
  * Created by Suriyanarayanan K
@@ -127,6 +127,7 @@ public class SipIntermediateJsonParser {
         if (!checkList.contains(tableName)) {
             checkList.add(tableName);
             String idValue = getUniqueValue(line, tablePrimaryHeaderPosition.get(tableName));
+
             if (!idValue.contains("null")) {
                 if (result.isEmpty()) {
                     parseLineaAndInsertIntoJson(result, line, tableColumnValues, tableList, tableName, checkList, lineStartPositon, tablePosition, columnValuePair, idValue);
@@ -164,9 +165,10 @@ public class SipIntermediateJsonParser {
         JSONObject valueContains = result.getJSONObject(idValue);
         tablePosition = tablePosition + 1;
         if (tablePosition >= tableList.size()) {
-            tablePosition = tableList.size();
+            tablePosition = tableList.size() - 1;
         }
-        parseJsonResult(valueContains.getJSONObject(tableList.get(tablePosition)), line, tableColumnValues, tableList, tableList.get(tablePosition), checkList, (int) (lineStartPositon + tableColumnValues.get(tableName)), tablePosition, (int) (lineStartPositon + tableColumnValues.get(tableName)));
+        if (valueContains.has(tableList.get(tablePosition)))
+            parseJsonResult(valueContains.getJSONObject(tableList.get(tablePosition)), line, tableColumnValues, tableList, tableList.get(tablePosition), checkList, (int) (lineStartPositon + tableColumnValues.get(tableName)), tablePosition, (int) (lineStartPositon + tableColumnValues.get(tableName)));
     }
 
     private void parseLineaAndInsertIntoJson(JSONObject result, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPositon, int tablePosition, JSONObject columnValuePair, String idValue) {
@@ -192,7 +194,6 @@ public class SipIntermediateJsonParser {
     }
 
     private String getUniqueValue(String[] line, List<Integer> positionsList) {
-
         List<String> positionPrimaryKeyValues = new ArrayList<>();
         for (Integer position : positionsList) {
             positionPrimaryKeyValues.add(line[position]);
