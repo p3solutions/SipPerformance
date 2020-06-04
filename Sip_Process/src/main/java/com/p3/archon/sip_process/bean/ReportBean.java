@@ -33,14 +33,6 @@ public class ReportBean {
     private PathReportBean mainTablePerformance = PathReportBean.builder().build();
     @Builder.Default
     private Map<String, Long> tableRecordCount = new LinkedHashMap<>();
-    //@Builder.Default
-    //private long totalDatabaseHit = 0;
-    //@Builder.Default
-    //private long dbHitCounter = 0;
-    //@Builder.Default
-    //private long dbConnectionTime = 0;
-    //@Builder.Default
-    //private long resultSetTime = 0;
     @Builder.Default
     private long endTime = 0;
     @Builder.Default

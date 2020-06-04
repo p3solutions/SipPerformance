@@ -55,7 +55,7 @@ public class Utility {
                 : string;
     }
 
-    public static String getMainTablePrimaryColumnQuery(List<String> mainTablePrimaryKeyColumns) {
+    public static String getColumnAsQueryFramer(List<String> mainTablePrimaryKeyColumns) {
         List<String> COLUMN_STRING = new ArrayList<>();
         for (String column : mainTablePrimaryKeyColumns) {
             COLUMN_STRING.add(column + " as \"" + column + "\"");

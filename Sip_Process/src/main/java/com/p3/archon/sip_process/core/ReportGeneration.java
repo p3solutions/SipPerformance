@@ -60,17 +60,32 @@ public class ReportGeneration {
 
     private void setValuesIntoReportVariables() {
         for (Map.Entry<Integer, PathReportBean> pathPerformanceEntry : reportBean.getPathPerformanceMap().entrySet()) {
-            totalBlobRecordCounter += pathPerformanceEntry.getValue().getBlobCounter();
-            totalClobRecordCounter += pathPerformanceEntry.getValue().getClobCounter();
+
+            //Path Performance
+
             dbHitCounter += pathPerformanceEntry.getValue().getDbHitCounter();
             totalDBConnectionTime += pathPerformanceEntry.getValue().getDbConnectionTime();
+            totalResultDataReadTime += pathPerformanceEntry.getValue().getResultSetTime();
+
+            totalBlobRecordCounter += pathPerformanceEntry.getValue().getBlobCounter();
+            totalClobRecordCounter += pathPerformanceEntry.getValue().getClobCounter();
             totalBlobRecordWriteTime += pathPerformanceEntry.getValue().getBlobTime();
             totalClobRecordWriteTime += pathPerformanceEntry.getValue().getClobTime();
-            totalResultDataReadTime += pathPerformanceEntry.getValue().getResultSetTime();
+
         }
+
+        //Main Table
+
         dbHitCounter += reportBean.getMainTablePerformance().getDbHitCounter();
         totalDBConnectionTime += reportBean.getMainTablePerformance().getDbConnectionTime();
         totalResultDataReadTime += reportBean.getMainTablePerformance().getResultSetTime();
+
+        totalBlobRecordCounter += reportBean.getMainTablePerformance().getBlobCounter();
+        totalClobRecordCounter += reportBean.getMainTablePerformance().getClobCounter();
+        totalBlobRecordWriteTime += reportBean.getMainTablePerformance().getBlobTime();
+        totalClobRecordWriteTime += reportBean.getMainTablePerformance().getClobTime();
+
+
         totalBatchAssemblerTime = reportBean.getTotalBatchAssemblerTime();
         totalSourceSipRecord = reportBean.getTotalSourceSipRecord();
         totalExtractedSipRecord = reportBean.getTotalExtractedSipRecord();
@@ -82,7 +97,7 @@ public class ReportGeneration {
 
     public void generatePerformanceReport() {
         try {
-            File psFile = new File(outputLocation + File.separator + "Archon_performance_statistics" + UUID.randomUUID().toString() + ".html");
+            File psFile = new File(outputLocation + File.separator + "Archon_Performance_Statistics" + ".html");
             if (!psFile.exists()) {
                 psFile.createNewFile();
             }

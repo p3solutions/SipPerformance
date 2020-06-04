@@ -37,21 +37,25 @@ public class PathandQueryCreator {
 
     /**
      * Responsible for Creation Path List
+     *
+     * @param selectedTableList
      */
-    public Map<Integer, List<String>> startParsingAndCreationPathList() {
+    public Map<Integer, List<String>> startParsingAndCreationPathList(List<String> selectedTableList) {
         LOGGER.info("Start Creating Path and Query List");
 
-        return createPathList();
+        return createPathList(selectedTableList);
     }
 
     /**
      * Responsible for Creation Path List
+     *
+     * @param selectedTableList
      */
-    private Map<Integer, List<String>> createPathList() {
+    private Map<Integer, List<String>> createPathList(List<String> selectedTableList) {
         Set<String> checkedList = new HashSet<>();
         checkedList.add(mainTable);
         int count = 0;
-        for (String path : addChildElementIntoTree(mainTable, checkedList)) {
+        for (String path : addChildElementIntoTree(mainTable, checkedList, selectedTableList)) {
             pathTableList.put(count, Arrays.asList(path.split("->")));
             count++;
         }
@@ -147,15 +151,13 @@ public class PathandQueryCreator {
         for (String table : tableList) {
             columnList.add(getTableDetailsBasedOnTableName(table.split("\\.")[1]).getColumnQuery());
         }
-
-        return String.join(",", columnList).equalsIgnoreCase(",,,") ? " * " : String.join(",", columnList);
+        return columnList.isEmpty() ? "*" : String.join(",", columnList);
     }
-
     /**
      * Responsible for getting Traversal Path List
      */
-    private List<String> addChildElementIntoTree(String tableName, Set<String> checkedList) {
-        List<String> temporary = getTemporaryTraversalList(tableName, checkedList);
+    private List<String> addChildElementIntoTree(String tableName, Set<String> checkedList, List<String> selectedTableList) {
+        List<String> temporary = getTemporaryTraversalList(tableName, checkedList, selectedTableList);
         checkedList.remove(tableName);
         return getTraverseList(tableName, temporary);
     }
@@ -164,13 +166,13 @@ public class PathandQueryCreator {
      * Responsible for getting Temporary Traversal Path List
      */
 
-    private List<String> getTemporaryTraversalList(String tableName, Set<String> checkedList) {
+    private List<String> getTemporaryTraversalList(String tableName, Set<String> checkedList, List<String> selectedTableList) {
         List<String> temporary = new ArrayList<>();
         for (String subChild : getTemporarySubChildList(tableName, checkedList)) {
-            if (!checkedList.contains(subChild)) {
+            if (!checkedList.contains(subChild) && tablewithRelationBean.getSelectedTableList().contains(subChild)) {
                 checkedList.add(subChild);
                 if (!getTableDetailsBasedOnTableName(tableName).getRelatedTables().isEmpty()) {
-                    temporary.addAll(addChildElementIntoTree(subChild, checkedList));
+                    temporary.addAll(addChildElementIntoTree(subChild, checkedList, selectedTableList));
                 }
             }
         }
@@ -247,12 +249,12 @@ public class PathandQueryCreator {
         if (parentTable.isEmpty()) {
             if (tableDetails.getBlobColumn() != null && !tableDetails.getBlobColumn().isEmpty()) {
                 blobQueryPreparedList.add("SELECT " +
-                        Utility.getMainTablePrimaryColumnQuery(tablePrimaryKey.get(childTable))
+                        Utility.getColumnAsQueryFramer(tablePrimaryKey.get(childTable))
                         + "," + tableDetails.getBlobColumn() + " FROM " + schemaName + "." + childTable + (tableDetails.getFilterQuery().isEmpty() ? "" : " WHERE ( " + tableDetails.getFilterQuery() + " ) "));
             }
         } else {
             if (tableDetails.getBlobColumn() != null && !tableDetails.getBlobColumn().isEmpty()) {
-                blobQueryPreparedList.add("SELECT " + Utility.getMainTablePrimaryColumnQuery(tablePrimaryKey.get(childTable))
+                blobQueryPreparedList.add("SELECT " + Utility.getColumnAsQueryFramer(tablePrimaryKey.get(childTable))
                         + "," + tableDetails.getBlobColumn() + " FROM " + getTableNamesLine(parentTableList)
                         + getJoinAndFilterCondition(parentTableList));
             }
@@ -334,7 +336,6 @@ public class PathandQueryCreator {
                 filterCondition.add(tableDetails.getFilterQuery());
             }
         }
-
         return String.join(" AND ", filterCondition);
     }
 
@@ -352,10 +353,13 @@ public class PathandQueryCreator {
         List<String> blobQueryList = new ArrayList<>();
         TableDetails tableDetails = getTableDetailsBasedOnTableName(mainTableName);
         if (!tableDetails.getBlobColumn().isEmpty()) {
-            blobQueryList.add("SELECT " +
-                    Utility.getMainTablePrimaryColumnQuery(tablePrimaryJoinColumn.get(mainTableName))
-                    + "," + tableDetails.getBlobColumn() + " FROM " + schemaName + "." + mainTableName + (tableDetails.getFilterQuery().isEmpty() ? "" : " WHERE ( " + tableDetails.getFilterQuery() + " ) "));
+            blobQueryList.add("SELECT " + Utility.getColumnAsQueryFramer(tablePrimaryJoinColumn.get(mainTableName)) + "," + tableDetails.getBlobColumn() + " FROM " + schemaName + "." + mainTableName + (tableDetails.getFilterQuery().isEmpty() ? "" : " WHERE ( " + tableDetails.getFilterQuery() + " ) "));
         }
         return blobQueryList;
     }
+
+    public TablewithRelationBean getTablewithRelationBean() {
+        return tablewithRelationBean;
+    }
+
 }

@@ -4,7 +4,6 @@ import com.opencsv.CSVParser;
 import com.opencsv.CSVParserBuilder;
 import com.opencsv.CSVReader;
 import com.opencsv.CSVReaderBuilder;
-import com.opencsv.enums.CSVReaderNullFieldIndicator;
 import com.opencsv.exceptions.CsvValidationException;
 import com.p3.archon.sip_process.utility.Utility;
 import lombok.SneakyThrows;
@@ -55,14 +54,22 @@ public class SipIntermediateJsonParser {
         this.outputLocation = outputLocation;
         this.mainTablePrimaryKeyCount = mainTablePrimaryKeyCount;
         initializeCSvReader();
+        LOGGER.debug("Header List :" + headerList);
+        LOGGER.debug("Table Primary Header Position :" + tablePrimaryHeaderPosition);
     }
 
     @SneakyThrows
     private void initializeCSvReader() {
         CSVParser parser;
         parser = new CSVParserBuilder().withSeparator('�')
-                .withFieldAsNull(CSVReaderNullFieldIndicator.BOTH).withIgnoreLeadingWhiteSpace(true)
-                .withIgnoreQuotations(false).withQuoteChar('"').withStrictQuotes(false).build();
+                .withIgnoreQuotations(true)
+                //.withFieldAsNull(CSVReaderNullFieldIndicator.BOTH).withIgnoreLeadingWhiteSpace(true)
+                //.withIgnoreQuotations(false).withQuoteChar('"').withStrictQuotes(false)
+                .build();
+
+        //.withSeparator(',')
+        //.withIgnoreQuotations(true)
+        //.build();
         csvReader = new CSVReaderBuilder(new FileReader(fileLocationWithName))
                 .withCSVParser(parser)
                 .withSkipLines(1).build();
@@ -99,7 +106,9 @@ public class SipIntermediateJsonParser {
             String[] line = null;
             do {
                 if (line != null && line.length != 0) {
+
                     if (checkMatching(line, mainTableRowRecordValue)) {
+                        LOGGER.debug("Row Array Element :" + Arrays.asList(line));
                         parseJsonResult(rootTableJson.getJSONObject(tablesList.get(0)), line, tableColumnCount, tablesList, tablesList.get(0), new ArrayList<>(), 0, 0, 0);
                     } else {
                         returnPreviousList = Arrays.asList(line);
@@ -109,7 +118,8 @@ public class SipIntermediateJsonParser {
             } while ((line = csvReader.readNext()) != null);
 
         } catch (IOException | CsvValidationException e) {
-            LOGGER.error("IntermediateJson File Not Found : " + e.getMessage());
+
+            LOGGER.error("While Parsing Csv File : " + e.getMessage());
         }
         return returnPreviousList;
     }
@@ -171,19 +181,25 @@ public class SipIntermediateJsonParser {
             parseJsonResult(valueContains.getJSONObject(tableList.get(tablePosition)), line, tableColumnValues, tableList, tableList.get(tablePosition), checkList, (int) (lineStartPositon + tableColumnValues.get(tableName)), tablePosition, (int) (lineStartPositon + tableColumnValues.get(tableName)));
     }
 
-    private void parseLineaAndInsertIntoJson(JSONObject result, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPositon, int tablePosition, JSONObject columnValuePair, String idValue) {
-        createColumnValuePair(line, tableColumnValues, tableName, lineStartPositon, columnValuePair);
+    private void parseLineaAndInsertIntoJson(JSONObject result, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPosition, int tablePosition, JSONObject columnValuePair, String idValue) {
+        createColumnValuePair(line, tableColumnValues, tableName, lineStartPosition, columnValuePair);
         if (checkList.size() != tableList.size()) {
             tablePosition = tablePosition + 1;
             columnValuePair.put(tableList.get(tablePosition), new JSONObject());
-            columnValuePair.put(tableList.get(tablePosition), parseJsonResult(columnValuePair.getJSONObject(tableList.get(tablePosition)), line, tableColumnValues, tableList, tableList.get(tablePosition), checkList, (int) (lineStartPositon + tableColumnValues.get(tableName)), tablePosition, (int) (lineStartPositon + tableColumnValues.get(tableName))));
+            columnValuePair.put(tableList.get(tablePosition), parseJsonResult(columnValuePair.getJSONObject(tableList.get(tablePosition)), line, tableColumnValues, tableList, tableList.get(tablePosition), checkList, (int) (lineStartPosition + tableColumnValues.get(tableName)), tablePosition, (int) (lineStartPosition + tableColumnValues.get(tableName))));
         }
         result.put(idValue, columnValuePair);
     }
 
-    private void createColumnValuePair(String[] line, Map<String, Long> tableColumnValues, String tableName, int lineStartPositon, JSONObject columnValuePair) {
+    private void createColumnValuePair(String[] line, Map<String, Long> tableColumnValues, String tableName, int lineStartPosition, JSONObject columnValuePair) {
+
+        LOGGER.debug("Column Values :" + tableColumnValues);
+        LOGGER.debug("Start Position :" + lineStartPosition);
+        LOGGER.debug("End Position :" + (lineStartPosition + tableColumnValues.get(tableName)));
         List<String> tempHeader = headerList.stream().filter(header -> header.startsWith(tableName + ".")).collect(Collectors.toList());
-        List<String> values = Arrays.asList(line).subList(lineStartPositon, ((int) (lineStartPositon + tableColumnValues.get(tableName))));
+        LOGGER.debug("Table Header List :" + tempHeader);
+        List<String> values = Arrays.asList(line).subList(lineStartPosition, ((int) (lineStartPosition + tableColumnValues.get(tableName))));
+        LOGGER.debug("Table Values List :" + values);
         for (int j = 0; j < tempHeader.size(); j++) {
             if (j > values.size() - 1) {
                 columnValuePair.put(tempHeader.get(j), "");

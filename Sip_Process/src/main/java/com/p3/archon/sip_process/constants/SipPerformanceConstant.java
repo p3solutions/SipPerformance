@@ -14,7 +14,7 @@ public class SipPerformanceConstant {
     public static final String JSON = "json";
     public static final String TXT = "txt";
 
-    public static final String NULL_VALUE = "NULL VALUE";
+    public static final String NULL_VALUE = "";
 
     public static final String ALERT_INPUT = "we will assume the default values if User not specify the inputs in a config.properties file . \n" +
             "please ensure the values in properties file \n" +
@@ -41,5 +41,10 @@ public class SipPerformanceConstant {
     public static final String DATE_FORMAT = "yyyy-MM-dd";
     public static final String SINGLE_SIP_RECORD_TIME = "SINGLE_SIP_RECORD_TIME";
     public static final String BATCH_ASSEMBLER_TIME = "BATCH_ASSEMBLER_TIME";
+
+    public static final String NEW_LINE = "\n";
+    public static final String TAB = "\t";
+    public static final String NEW_LINE_TAG = "NL_TAG";
+    public static final String TAB_TAG = "TB_TAG";
 
 }

@@ -1,6 +1,7 @@
 package com.p3.archon.sip_process.core;
 
 import com.p3.archon.sip_process.bean.BinaryData;
+import com.p3.archon.sip_process.utility.Utility;
 import org.apache.log4j.Logger;
 import org.apache.xmlbeans.impl.common.XMLChar;
 import org.w3c.dom.Document;
@@ -110,7 +111,6 @@ public class RowObjectCreator {
             try {
                 String validFileName = getValidNameForThatFile(columnName, primaryKeyValues);
                 LOGGER.debug("File Name :" + validFileName);
-
                 String fileName = attachmentFolderName + File.separator + validFileName;
                 if (!new File(fileName).exists()) {
                     BinaryData data = ((BinaryData) columnData);
@@ -124,19 +124,18 @@ public class RowObjectCreator {
                     out.flush();
                     out.close();
                     in.close();
-                } else {
                 }
             } catch (Exception e) {
+                LOGGER.debug("Exception in Blob Creation :" + e.getStackTrace());
             }
         }
     }
 
     private String getValidNameForThatFile(String columnName, String primaryKeyValues) {
-        return columnName.trim().replace(".", "__") + "__" + primaryKeyValues;
+        return Utility.getTextFormatted(columnName.trim().replace(".", "__") + "__" + primaryKeyValues);
     }
 
     public List<String> getRowObjectList(ResultSet rs) throws SQLException {
-
         Map<String, String> keyPairRecordValues = new LinkedHashMap<>();
         for (int i = 1; i <= resultSetMetaData.getColumnCount(); i++) {
             String columnName = resultSetMetaData.getColumnLabel(i);
@@ -219,7 +218,7 @@ public class RowObjectCreator {
                     if (isShowDateTime) {
                         keyPairRecordValues.put(columnName.trim(), getDateValue(columnData.toString()));
                     } else
-                        keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString()));
+                        keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString(), false));
                     totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
                     break;
                 case Types.TIMESTAMP:
@@ -228,7 +227,8 @@ public class RowObjectCreator {
                     startTimeRec = System.currentTimeMillis();
                     final Timestamp timestampValue = rs.getTimestamp(i);
                     if (rs.wasNull() || timestampValue == null) {
-                        columnData = new String();
+                        keyPairRecordValues.put(columnName.trim(), NULL_VALUE);
+                        totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
                     } else {
                         stringRecordCounter++;
                         try {
@@ -240,9 +240,10 @@ public class RowObjectCreator {
                         } catch (Exception e) {
                             columnData = rs.getTimestamp(i);
                         }
+                        keyPairRecordValues.put(columnName.trim(), getDateValue(columnData.toString()));
+                        totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
                     }
-                    keyPairRecordValues.put(columnName.trim(), getDateValue(columnData.toString()));
-                    totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
+
                     break;
                 case Types.BIT:
                     startTimeRec = System.currentTimeMillis();
@@ -255,7 +256,7 @@ public class RowObjectCreator {
                         columnData = stringValue.equalsIgnoreCase(Boolean.toString(booleanValue)) ? booleanValue
                                 : stringValue;
                     }
-                    keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString()));
+                    keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString(), false));
                     totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
                     break;
                 case Types.FLOAT:
@@ -273,7 +274,7 @@ public class RowObjectCreator {
                             formatter = new DecimalFormat("#");
                         columnData = formatter.format(value);
                     }
-                    keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString()));
+                    keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString(), false));
                     totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
                     break;
                 case Types.DOUBLE:
@@ -290,7 +291,7 @@ public class RowObjectCreator {
                             formatter = new DecimalFormat("#");
                         columnData = formatter.format(value);
                     }
-                    keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString()));
+                    keyPairRecordValues.put(columnName.trim(), getXmlValidStringData(columnData.toString(), false));
                     totalStringRecordWriteTime += (System.currentTimeMillis() - startTimeRec);
                     break;
                 default:
@@ -302,7 +303,7 @@ public class RowObjectCreator {
         return new ArrayList<>(keyPairRecordValues.values());
     }
 
-    private String getBlobInfo(Object columnData, String columnName, Map<String, String> keyPairRecordValues) throws SQLException {
+    private String getBlobInfo(Object columnData, String columnName, Map<String, String> keyPairRecordValues) {
         List fileNameSuffixList = new ArrayList();
         if (columnData == null) {
             return NULL_VALUE;
@@ -325,26 +326,32 @@ public class RowObjectCreator {
             stringRecordCounter++;
             columnData = objectValue;
         }
-        return getXmlValidStringData(columnData.toString());
+        return getXmlValidStringData(columnData.toString(), false);
     }
 
-    public String getXmlValidStringData(String data) {
-        if (data == null)
+    public String getXmlValidStringData(String data, boolean isClobData) {
+
+        if (data == null) {
             return NULL_VALUE;
-        return stripNonValidXMLCharacters(data.replace("&", "&amp;").replace(">", "&gt;").replace("<", "&lt;")
-                .replace("'", "&apos;").replace("\"", "&quot;"));
+        } else if (isClobData) {
+            return stripNonValidXMLCharacters(data);
+        } else {
+            return stripNonValidXMLCharacters(data.replace("&", "&amp;").replace(">", "&gt;").replace("<", "&lt;")
+                    .replace("'", "&apos;").replace("\"", "&quot;")).replace(NEW_LINE, NEW_LINE_TAG).replace(TAB, TAB_TAG);
+        }
+
     }
 
-    private String stripNonValidXMLCharacters(String in) {
-        if (in == null || ("".equals(in)))
-            return null;
+    private String stripNonValidXMLCharacters(String data) {
+        if (data == null || ("".equals(data)))
+            return NULL_VALUE;
         StringBuffer out = new StringBuffer();
-        for (int i = 0; i < in.length(); i++) {
-            char c = in.charAt(i);
+        for (int i = 0; i < data.length(); i++) {
+            char c = data.charAt(i);
             if (XMLChar.isValid(c))
                 out.append(c);
             else
-                out.append(checkReplace(in.codePointAt(i)));
+                out.append(checkReplace(data.codePointAt(i)));
         }
         return (out.toString().trim());
     }
@@ -413,9 +420,10 @@ public class RowObjectCreator {
         try {
             if (columnData == null)
                 data = "<![CDATA[]]>";
-            else if (columnData instanceof BinaryData)
+            else if (columnData instanceof BinaryData) {
                 columnData = ((BinaryData) columnData).toString();
-
+                columnData = getXmlValidStringData(columnData.toString(), true);
+            }
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             DocumentBuilder builder = factory.newDocumentBuilder();
             Document document = builder.newDocument();
@@ -432,7 +440,7 @@ public class RowObjectCreator {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return data;
+        return data.replace(NEW_LINE, NEW_LINE_TAG).replace(TAB, TAB_TAG);
     }
 
     public String getXMLFromDocument(Document document) throws TransformerException {
@@ -599,10 +607,6 @@ public class RowObjectCreator {
 
     public long getBlobCounter() {
         return blobCounter;
-    }
-
-    public Map<String, List<String>> getTablePrimaryKeyColumns() {
-        return tablePrimaryKeyColumns;
     }
 
     public void setTablePrimaryKeyColumns(Map<String, List<String>> tablePrimaryKeyColumns) {
