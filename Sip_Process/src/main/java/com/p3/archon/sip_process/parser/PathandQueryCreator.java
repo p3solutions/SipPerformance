@@ -362,4 +362,82 @@ public class PathandQueryCreator {
         return tablewithRelationBean;
     }
 
+    public List<String> prepareHeaderList(List<String> pathTableList) {
+
+        List<String> headerList = new ArrayList<>();
+
+        for (String table : pathTableList) {
+            TableDetails tableDetails = getTableDetailsBasedOnTableName(table.split("\\.")[1]);
+            headerList.addAll(Arrays.asList(tableDetails.getColumnQuery().split(",")).stream().map(column -> column.split("as \"")[0].trim()).collect(Collectors.toList()));
+        }
+        return headerList;
+    }
+
+    public Map<Integer, Map<String, String>> getIdsFileDistinctQueryList(Map<Integer, List<String>> pathTableList) {
+
+        Map<Integer, Map<String, String>> pathIdsFileDistinctQuery = new LinkedHashMap<>();
+        pathTableList.entrySet().forEach(
+                path -> {
+                    pathIdsFileDistinctQuery.put(path.getKey(), getPathTableDistinctQuery(path.getValue()));
+                }
+        );
+        System.out.println(pathIdsFileDistinctQuery);
+        return pathIdsFileDistinctQuery;
+    }
+
+    private Map<String, String> getPathTableDistinctQuery(List<String> tableList) {
+        Map<String, String> tableDistinctQuery = new LinkedHashMap<>();
+
+        List<String> modifiedTableList = tableList.stream().map(table -> table.split("\\.")[1]).collect(Collectors.toList());
+        for (String table : modifiedTableList) {
+            if (!table.equalsIgnoreCase(mainTable)) {
+                StringBuffer DISTINCT_QUERY = new StringBuffer();
+                DISTINCT_QUERY.append("SELECT COUNT ( DISTINCT ");
+                DISTINCT_QUERY.append(getDistinctColumnList(table));
+                DISTINCT_QUERY.append(getDistinctFromAndWhereCondition(modifiedTableList, table));
+                tableDistinctQuery.put(table, DISTINCT_QUERY.toString());
+            }
+        }
+        return tableDistinctQuery;
+    }
+
+    private String getDistinctColumnList(String tableName) {
+        return String.join(",", getTableDetailsBasedOnTableName(tableName).getKeyColumns());
+    }
+
+    private String getDistinctFromAndWhereCondition(List<String> tableList, String tableName) {
+
+        StringBuffer FROM_WHERE_CONDITION = new StringBuffer();
+        FROM_WHERE_CONDITION.append(" ) FROM ");
+        List<String> tempTableList = tableList.subList(0, tableList.indexOf(tableName) + 1);
+        FROM_WHERE_CONDITION.append(String.join(",", tempTableList.stream().map(table -> schemaName + "." + table).collect(Collectors.toList())));
+        FROM_WHERE_CONDITION.append(" WHERE ");
+        List<String> joinConditionList = new ArrayList<>();
+        List<String> filterDataCondition = new ArrayList<>();
+        for (int i = 0; i < tempTableList.size(); i++) {
+            if (i + 1 != tempTableList.size()) {
+                int finalJ = i + 1;
+                TableDetails tableDetails = getTableDetailsBasedOnTableName(tableList.get(i));
+                if (!tableDetails.getFilterQuery().isBlank()) {
+                    filterDataCondition.add(tableDetails.getFilterQuery());
+                }
+                tableDetails.getRelationshipList().forEach(
+                        relationShip -> {
+                            if (relationShip.split("->")[0].equalsIgnoreCase(tableList.get(finalJ))) {
+                                joinConditionList.add(relationShip.split("->")[1]);
+                            }
+                        }
+                );
+            }
+        }
+        if (!filterDataCondition.isEmpty()) {
+            FROM_WHERE_CONDITION.append(String.join(" AND ", filterDataCondition) + " ");
+            FROM_WHERE_CONDITION.append(" AND ");
+            FROM_WHERE_CONDITION.append(String.join(" AND ", joinConditionList) + " ");
+        } else {
+            FROM_WHERE_CONDITION.append(String.join(" AND ", joinConditionList) + " ");
+        }
+
+        return FROM_WHERE_CONDITION.toString();
+    }
 }

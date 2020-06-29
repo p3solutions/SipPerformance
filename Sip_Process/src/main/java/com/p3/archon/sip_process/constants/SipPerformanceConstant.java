@@ -13,6 +13,7 @@ public class SipPerformanceConstant {
     public static final String FINAL_JSON_FILE = "Final_";
     public static final String JSON = "json";
     public static final String TXT = "txt";
+    public static final String IDS = ".ids";
 
     public static final String NULL_VALUE = "";
 
@@ -44,7 +45,10 @@ public class SipPerformanceConstant {
 
     public static final String NEW_LINE = "\n";
     public static final String TAB = "\t";
-    public static final String NEW_LINE_TAG = "NL_TAG";
-    public static final String TAB_TAG = "TB_TAG";
+    public static final String EMPTY = "***EMP***";
+    public static final String NEW_LINE_TAG = "&nl;";
+    public static final String TAB_TAG = "&tab;";
+
+    public static final String IDS_FOLDER = "IDS";
 
 }

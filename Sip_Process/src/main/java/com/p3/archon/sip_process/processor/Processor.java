@@ -1,10 +1,14 @@
 package com.p3.archon.sip_process.processor;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.code.externalsorting.ExternalSort;
 import com.opencsv.CSVParser;
 import com.opencsv.CSVParserBuilder;
 import com.opencsv.CSVReader;
 import com.opencsv.CSVReaderBuilder;
 import com.opencsv.enums.CSVReaderNullFieldIndicator;
+import com.opencsv.exceptions.CsvValidationException;
 import com.p3.archon.sip_process.bean.InputArgs;
 import com.p3.archon.sip_process.bean.PathReportBean;
 import com.p3.archon.sip_process.bean.ReportBean;
@@ -41,6 +45,7 @@ import static java.util.stream.Collectors.toMap;
 
 public class Processor {
 
+
     private ConnectionChecker connectionChecker = new ConnectionChecker();
 
     private InputArgs inputBean;
@@ -51,6 +56,15 @@ public class Processor {
 
     private ForkJoinPool customThreadPool;
     private ReportBean reportBean;
+    private Map<String, Dictionary> tableDictionary = new LinkedHashMap<>();
+    private Map<String, PrintWriter> tablePrintWriter = new LinkedHashMap<>();
+
+
+    private long intermediateJsonTime = 0;
+    private long joinAllJsonTime = 0;
+    private long xmlDocumentTime = 0;
+
+    private String IDS_FILE_LOCATION = "";
 
     private Logger LOGGER = Logger.getLogger(this.getClass().getName());
 
@@ -83,7 +97,22 @@ public class Processor {
         int theadCount = (propertyFileReader.getIntegerValue("theadCount", 10));
         int pathThreadCount = (propertyFileReader.getIntegerValue("pathThreadCount", 10));
         boolean showTime = (propertyFileReader.getBooleanValue("showTime", false));
-        String jobId = propertyFileReader.getStringValue("jobId", "");
+        String jobId = propertyFileReader.getStringValue("jobId", "abcd-123456");
+        String mainTablePrimaryColumnFileName = propertyFileReader.getStringValue("mainTablePrimaryColumnFileName", "");
+
+
+        // Record FIle Process
+        boolean isRecordFileProcess = propertyFileReader.getBooleanValue("isRecordFileProcess", false);
+        String fileNameList = propertyFileReader.getStringValue("fileNameList", "");
+        String columndatatype = propertyFileReader.getStringValue("columnDataType", "");
+
+
+        //isCleanUpData process
+        boolean isCleanUpData = propertyFileReader.getBooleanValue("isCleanUpData", false);
+
+        //isIdsFIle
+        boolean isIdsFile = propertyFileReader.getBooleanValue("isIdsFile", false);
+        boolean sortIdsFile = propertyFileReader.getBooleanValue("sortIdsFile", false);
 
         if (!new File(outputLocation).isDirectory()) {
             new File(outputLocation).mkdir();
@@ -91,7 +120,32 @@ public class Processor {
         String jobOutputLocation = outputLocation + File.separator + jobId;
         new File(jobOutputLocation).mkdir();
 
-        inputBean = InputArgs.builder().hostName(hostName).portNo(String.valueOf(portNo)).databaseName(databaseName).schemaName(schemaName).user(userName).pass(password).databaseServer(databaseServer).outputLocation(jobOutputLocation).mainTable(mainTable).jsonFile(sipInputJsonLocation).appName(appName).holdName(holdName).rpx(recordPerXML).threadCount(theadCount).pathThreadCount(pathThreadCount).showDatetime(showTime).jobId(jobId).build();
+        inputBean = InputArgs.builder()
+                .hostName(hostName)
+                .portNo(String.valueOf(portNo))
+                .databaseName(databaseName)
+                .schemaName(schemaName)
+                .user(userName)
+                .pass(password)
+                .databaseServer(databaseServer)
+                .outputLocation(jobOutputLocation)
+                .mainTable(mainTable)
+                .jsonFile(sipInputJsonLocation)
+                .appName(appName)
+                .holdName(holdName)
+                .rpx(recordPerXML)
+                .threadCount(theadCount)
+                .pathThreadCount(pathThreadCount)
+                .showDatetime(showTime)
+                .jobId(jobId)
+                .isRecordFileProcess(isRecordFileProcess)
+                .fileNameList(fileNameList.isEmpty() ? new ArrayList<>() : Arrays.asList(fileNameList.split("\\|")))
+                .mainTablePrimaryColumnFileName(mainTablePrimaryColumnFileName)
+                .columnDataType(columndatatype)
+                .isCleanUpData(isCleanUpData)
+                .isIdsFile(isIdsFile)
+                .sortIdsFile(sortIdsFile)
+                .build();
         inputBean.validateInputs();
         mainTableName = inputBean.getMainTable();
 
@@ -107,7 +161,6 @@ public class Processor {
      */
     public void startExtraction() {
 
-
         /**
          *  Responsible for Path and Query List
          */
@@ -117,36 +170,137 @@ public class Processor {
         tablePrimaryJoinColumn = pathandQueryCreator.getPrimaryJoinColumn(selectedTableList);
         reportBean.setTableRecordCount(initializeTableRecordCount(selectedTableList));
         reportBean.setWhereCondition(pathandQueryCreator.getAllTablesWhereCondition(selectedTableList));
+
+
+        if (inputBean.isIdsFile()) {
+            for (String table : selectedTableList) {
+                try {
+                    IDS_FILE_LOCATION = inputBean.getOutputLocation();
+                    if (!table.equalsIgnoreCase(mainTableName)) {
+                        tablePrintWriter.put(table, new PrintWriter(IDS_FILE_LOCATION + File.separator + table + IDS));
+                        tableDictionary.put(table, new Hashtable());
+                    }
+                } catch (FileNotFoundException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
         if (selectedTableList.size() == 1) {
             int fileCounter = 0;
             startExtractBlobContent(selectedTableList, pathandQueryCreator.getSingleTableBlobQueryList(mainTableName, tablePrimaryJoinColumn), reportBean.getMainTablePerformance());
             String testFileLocation = Utility.getFileName(inputBean.getOutputLocation(), RECORD_FILE, fileCounter, TXT);
             String SINGLE_TABLE_QUERY = pathandQueryCreator.getSingleTableQuery(mainTableName);
+            //ids file query
             PathReportBean mainTablePerformance = reportBean.getMainTablePerformance();
             Map<String, List<String>> tablePrimaryKey = generateTablePrimaryKeyBasedOnTableList(selectedTableList);
             List<String> headerList = startExecutingQueryToRecordFileAndReturnAsHeaderList(SINGLE_TABLE_QUERY, charReplacement, mainTablePerformance, testFileLocation, tablePrimaryKey);
             startAddValuesIntoBatchAssembler(headerList, testFileLocation, columnDataTypeMap, reportBean, pathandQueryCreator.getTablewithRelationBean());
-
         } else {
             Map<Integer, List<String>> pathTableList = pathandQueryCreator.startParsingAndCreationPathList(selectedTableList);
             Map<Integer, String> queryList = pathandQueryCreator.getConstructQueryList(pathTableList);
+            Map<Integer, Map<String, String>> pathIdsFileDistinctQuery = pathandQueryCreator.getIdsFileDistinctQueryList(pathTableList);
             long startConditionTime = System.currentTimeMillis();
             Connection connection = connectionChecker.checkConnection(inputBean);
             reportBean.getMainTablePerformance().setDbHitCounter(reportBean.getMainTablePerformance().getDbHitCounter() + 1);
             reportBean.getMainTablePerformance().setDbConnectionTime(reportBean.getMainTablePerformance().getDbConnectionTime() + (System.currentTimeMillis() - startConditionTime));
             List<String> mainTablePrimaryKeyColumns = getMainTablePrimaryKeyColumnsList(mainTableName);
-            List<String> mainTableRowPrimaryValues = getMainTablePrimaryKeyColumnsValues(pathandQueryCreator, connection, mainTablePrimaryKeyColumns, charReplacement, reportBean);
+            List<String> mainTableRowPrimaryValues = new ArrayList<>();
+            LOGGER.debug("Start Pulling Main Table Values");
+            if (inputBean.isRecordFileProcess()) {
+                getMainTableValuesFromDebugFile(mainTableRowPrimaryValues);
+            } else {
+                mainTableRowPrimaryValues = getMainTablePrimaryKeyColumnsValues(pathandQueryCreator, connection, mainTablePrimaryKeyColumns, charReplacement, reportBean);
+                startCreatingMainTableDebugFiles(mainTablePrimaryKeyColumns, mainTableRowPrimaryValues);
+            }
+            LOGGER.debug("Main Table Values was collected");
             reportBean.setTotalSourceSipRecord(mainTableRowPrimaryValues.size());
             Map<Integer, List<String>> filePreviousLinesMaintainer = new LinkedHashMap<>();
-            Map<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserMap = getStartGeneratingRecordFileAndCreateIntermediateJsonBean(pathTableList, queryList, mainTablePrimaryKeyColumns, filePreviousLinesMaintainer, customThreadPool, charReplacement, reportBean.getPathPerformanceMap(), pathandQueryCreator);
+            Map<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserMap = new LinkedHashMap<>();
+            if (inputBean.isRecordFileProcess()) {
+                getColumnDataTypeMapFromDebugFile();
+                startCreatingSipIntermediateJsonParserMap(pathandQueryCreator, selectedTableList, pathTableList, mainTablePrimaryKeyColumns, filePreviousLinesMaintainer, sipIntermediateJsonParserMap);
+            } else {
+                sipIntermediateJsonParserMap = getStartGeneratingRecordFileAndCreateIntermediateJsonBean(pathTableList, queryList, mainTablePrimaryKeyColumns, filePreviousLinesMaintainer, customThreadPool, charReplacement, reportBean.getPathPerformanceMap(), pathandQueryCreator);
+                startGnerartingCOlumnDataTypeDebugFile();
+            }
             startIterateEachMainTableRecord(mainTableRowPrimaryValues, filePreviousLinesMaintainer, sipIntermediateJsonParserMap, pathandQueryCreator.getTablewithRelationBean());
         }
         startCreatingPdiSchemaFile();
         reportBean.setEndTime(new Date().getTime());
-        ReportGeneration reportGeneration = new ReportGeneration(reportBean, inputBean.getOutputLocation(), inputBean.getJobId());
+        ReportGeneration reportGeneration = new ReportGeneration(reportBean, inputBean.getOutputLocation(), inputBean.getJobId(),inputBean.isIdsFile(),inputBean.isSortIdsFile());
         reportGeneration.generatePerformanceReport();
         reportGeneration.generateExtractionAndSummaryReport();
+    }
 
+    private void startCreatingSipIntermediateJsonParserMap(PathandQueryCreator pathandQueryCreator, List<String> selectedTableList, Map<Integer, List<String>> pathTableList, List<String> mainTablePrimaryKeyColumns, Map<Integer, List<String>> filePreviousLinesMaintainer, Map<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserMap) {
+        for (Map.Entry<Integer, List<String>> path : pathTableList.entrySet()) {
+            String fileLocationWithName = inputBean.getFileNameList().get(path.getKey());
+            List<String> headerList = pathandQueryCreator.prepareHeaderList(path.getValue());
+            Map<String, Long> tableColumnCount = getTableColumnCount(headerList);
+            Map<String, List<String>> tablePrimaryKey = generateTablePrimaryKeyBasedOnTableList(selectedTableList);
+            Map<String, List<Integer>> tablePrimaryHeaderPosition = getTablePrimaryHeaderPositionMap(tablePrimaryKey, headerList);
+            SipIntermediateJsonParser sipIntermediateJsonParser = new SipIntermediateJsonParser(fileLocationWithName, tableColumnCount, headerList, tablePrimaryHeaderPosition, path.getKey(), inputBean.getOutputLocation(), mainTablePrimaryKeyColumns.size());
+            sipIntermediateJsonParserMap.put(path.getKey(), sipIntermediateJsonParser);
+            filePreviousLinesMaintainer.put(path.getKey(), new ArrayList<>());
+        }
+    }
+
+    private void startGnerartingCOlumnDataTypeDebugFile() {
+        try {
+            PrintWriter columnDataWriter = new PrintWriter(inputBean.getOutputLocation() + File.separator + "columnDataType.json");
+            String json = new ObjectMapper().writeValueAsString(columnDataTypeMap);
+            columnDataWriter.write(json);
+            columnDataWriter.flush();
+            columnDataWriter.close();
+        } catch (FileNotFoundException | JsonProcessingException e) {
+            LOGGER.error("While Creation of ColumnDataType : " + e.getMessage());
+        }
+    }
+
+    private void getColumnDataTypeMapFromDebugFile() {
+        String columnDataTypeContent = Utility.readLineByLine(inputBean.getColumnDataType());
+        ObjectMapper columnDataTypeMapper = new ObjectMapper();
+        try {
+            columnDataTypeMap = columnDataTypeMapper.readValue(columnDataTypeContent, HashMap.class);
+        } catch (IOException e) {
+            LOGGER.error("Mapping the Json into Table Bean : " + e.getMessage());
+        }
+    }
+
+    private void startCreatingMainTableDebugFiles(List<String> mainTablePrimaryKeyColumns, List<String> mainTableRowPrimaryValues) {
+        try {
+            PrintWriter mainTableWriter = new PrintWriter(inputBean.getOutputLocation() + File.separator + "MainTableValues.txt");
+            mainTableWriter.append(String.join("�", mainTablePrimaryKeyColumns) + NEW_LINE);
+            for (String mainTableRowPrimaryValue : mainTableRowPrimaryValues) {
+                mainTableWriter.append(mainTableRowPrimaryValue + NEW_LINE);
+            }
+            mainTableWriter.flush();
+            mainTableWriter.close();
+        } catch (FileNotFoundException e) {
+            LOGGER.error("While Creation of MainTableValues : " + e.getMessage());
+        }
+    }
+
+    private void getMainTableValuesFromDebugFile(List<String> mainTableRowPrimaryValues) {
+        CSVParser parser;
+        parser = new CSVParserBuilder().withSeparator('�')
+                .withIgnoreQuotations(true)
+                .build();
+        try {
+            CSVReader csvReader = new CSVReaderBuilder(new FileReader(inputBean.getMainTablePrimaryColumnFileName()))
+                    .withCSVParser(parser)
+                    .withSkipLines(1).build();
+            String[] line = null;
+            while ((line = csvReader.readNext()) != null) {
+                mainTableRowPrimaryValues.add(String.join("�", line));
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (CsvValidationException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
 
@@ -181,9 +335,10 @@ public class Processor {
                 headerAndValues.put(headerList.get(i), values.get(i));
             }
             Map<String, String> sortedHeaderAndValues = headerAndValues.entrySet().stream().sorted(comparingByKey()).collect(toMap(e -> e.getKey(), e -> e.getValue(), (e1, e2) -> e2, LinkedHashMap::new));
-            SipIntermediateJsonToXmlParser sipIntermediateJsonToXmlParser = new SipIntermediateJsonToXmlParser(inputBean, singleTableSipCreator, columnDataTypeMap, reportBean, false, tablewithRelationBean);
+            SipIntermediateJsonToXmlParser sipIntermediateJsonToXmlParser = new SipIntermediateJsonToXmlParser(inputBean, singleTableSipCreator, columnDataTypeMap, reportBean, false, tablewithRelationBean, tablePrintWriter, tableDictionary);
             timeMaintainer = sipIntermediateJsonToXmlParser.createXMlDocumentForSingleTable(sortedHeaderAndValues, timeMaintainer);
             rowCounter = updateRecordTimeWithTimeMaintainer(rowCounter, timeMaintainer, reportBean);
+            sipIntermediateJsonToXmlParser.generateIdsFileCreation();
         }
         reportBean.setTotalExtractedSipRecord((rowCounter - 1));
         singleTableSipCreator.getBatchAssembler().end();
@@ -202,7 +357,7 @@ public class Processor {
     private void startCreatingPdiSchemaFile() {
         PdiSchemaGeneratorRussianDoll pdiSchemaGeneratorRussianDoll = new PdiSchemaGeneratorRussianDoll(inputBean, columnDataTypeMap);
         boolean creationStatus = pdiSchemaGeneratorRussianDoll.startPdiSchemaCreation();
-        if (creationStatus)
+        if (inputBean.isCleanUpData() && creationStatus)
             deleteUnwantedFiles();
     }
 
@@ -210,27 +365,36 @@ public class Processor {
             tablewithRelationBean
     ) {
         SipCreator sipCreator = new SipCreator(inputBean);
+        SipIntermediateJsonToXmlParser sipIntermediateJsonToXmlParser = new SipIntermediateJsonToXmlParser(inputBean, sipCreator, columnDataTypeMap, reportBean, false, tablewithRelationBean, tablePrintWriter, tableDictionary);
         long rowCounter = 1;
         try {
             Map<String, Long> timeMaintainer = null;
             for (String mainTableKeyRowsValue : mainTableRowPrimaryValues) {
+                long interTime = System.currentTimeMillis();
                 timeMaintainer = new LinkedHashMap<>();
                 timeMaintainer.put(SINGLE_SIP_RECORD_TIME, System.currentTimeMillis());
-                LOGGER.info(rowCounter + " : Row Start Processing");
+                LOGGER.fatal(rowCounter + " : Row Start Processing");
                 customThreadPool.submit(() -> {
                     sipIntermediateJsonParserMap.entrySet().parallelStream().forEach(
                             sipIntermediateJsonParserEntry -> {
                                 startGeneratingIntermediateJsonBasedOnMainTableValues(filePreviousLinesMaintainer, sipIntermediateJsonParserMap.get(sipIntermediateJsonParserEntry.getKey()), mainTableKeyRowsValue, sipIntermediateJsonParserEntry.getKey());
                             });
                 }).get();
-
-                startAddingRecordIntoBatchAssembler(sipCreator, timeMaintainer, tablewithRelationBean);
+                intermediateJsonTime += System.currentTimeMillis() - interTime;
+                startAddingRecordIntoBatchAssembler(sipIntermediateJsonToXmlParser, timeMaintainer);
                 rowCounter = updateRecordTimeWithTimeMaintainer(rowCounter, timeMaintainer, reportBean);
             }
+            sipIntermediateJsonToXmlParser.generateIdsFileCreation();
             for (Map.Entry<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserEntry : sipIntermediateJsonParserMap.entrySet()) {
                 sipIntermediateJsonParserEntry.getValue().closeCSVReader();
             }
             sipCreator.getBatchAssembler().end();
+
+            if (inputBean.isIdsFile() && inputBean.isSortIdsFile()) {
+                long startDuplicateRemovalTime = System.currentTimeMillis();
+                duplicateIdsFileOperation();
+                reportBean.setIdsFileSortTime(reportBean.getIdsFileSortTime() + (System.currentTimeMillis() - startDuplicateRemovalTime));
+            }
         } catch (Exception e) {
             e.printStackTrace();
             LOGGER.error("Error :" + e.getMessage());
@@ -240,12 +404,25 @@ public class Processor {
         LOGGER.debug("Total No.of.Records Processed :" + (rowCounter - 1));
     }
 
+    private void duplicateIdsFileOperation() {
+        File[] idsFileArray = new File(IDS_FILE_LOCATION).listFiles((dir, name) -> name.toLowerCase().endsWith(".ids"));
+        for (File file : idsFileArray) {
+            try {
+                List<File> l = ExternalSort.sortInBatch(file);
+                ExternalSort.mergeSortedFiles(l, file, ExternalSort.defaultcomparator, true);
+            } catch (IOException e) {
+                LOGGER.error("While Removing the duplicate in the file " + file.getName());
+                LOGGER.error("While Removing the duplicate Exception " + e.getMessage());
+            }
+        }
+    }
+
     private long updateRecordTimeWithTimeMaintainer(long rowCounter, Map<String, Long> timeMaintainer, ReportBean reportBean) {
 
         reportBean.setWriteSipRecordTIme(reportBean.getWriteSipRecordTIme() + timeMaintainer.get(SINGLE_SIP_RECORD_TIME));
         reportBean.setTotalBatchAssemblerTime(reportBean.getTotalBatchAssemblerTime() + timeMaintainer.get(BATCH_ASSEMBLER_TIME));
-        LOGGER.info(rowCounter + " : Row Processed");
-        if (rowCounter % 10000 == 0) {
+        LOGGER.fatal(rowCounter + " : Row Processed");
+        if (rowCounter % 5000 == 0) {
             LOGGER.debug(Utility.LoggerPrintFor10000Line(rowCounter));
         }
         rowCounter++;
@@ -257,11 +434,14 @@ public class Processor {
      *
      * @return
      */
-    private Map<String, Long> startAddingRecordIntoBatchAssembler(SipCreator sipCreator, Map<String, Long> timeMaintainer, TablewithRelationBean tablewithRelationBean) {
-
-        SipIntermediateJsonToXmlParser sipIntermediateJsonToXmlParser = new SipIntermediateJsonToXmlParser(inputBean, sipCreator, columnDataTypeMap, reportBean, false, tablewithRelationBean);
+    private Map<String, Long> startAddingRecordIntoBatchAssembler(SipIntermediateJsonToXmlParser sipIntermediateJsonToXmlParser, Map<String, Long> timeMaintainer) {
+        long joinTime = System.currentTimeMillis();
         sipIntermediateJsonToXmlParser.joinAllJson();
-        return sipIntermediateJsonToXmlParser.createXMlDocument(timeMaintainer);
+        joinAllJsonTime += System.currentTimeMillis() - joinTime;
+        long docTime = System.currentTimeMillis();
+        Map<String, Long> batchAssemblerTiming = sipIntermediateJsonToXmlParser.createXMlDocument(timeMaintainer);
+        xmlDocumentTime += System.currentTimeMillis() - docTime;
+        return batchAssemblerTiming;
     }
 
     private void startGeneratingIntermediateJsonBasedOnMainTableValues(Map<Integer, List<String>> filePreviousLinesMaintainer, SipIntermediateJsonParser sipIntermediateJsonParser, String mainTableKeyRowsValue, Integer key) {
@@ -318,8 +498,6 @@ public class Processor {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-
-
     }
 
     private void updateCounterAndTimeIntoPerformance(PathReportBean pathReportBean, RowObjectCreator blobExtractionCreator) {
@@ -354,11 +532,16 @@ public class Processor {
             ResultSetMetaData mainTableResultSetMetaData = mainTableResultSet.getMetaData();
             RowObjectCreator mainTableRowObjectCreator = new RowObjectCreator(mainTableResultSetMetaData, inputBean.getOutputLocation(), charReplacement, inputBean.isShowDatetime());
             long resultSetTime = System.currentTimeMillis();
+            int count = 0;
             while (mainTableResultSet.next()) {
                 reportBean.getMainTablePerformance().setResultSetTime(reportBean.getMainTablePerformance().getResultSetTime() + (System.currentTimeMillis() - resultSetTime));
                 List<String> rowObject = mainTableRowObjectCreator.getRowObjectList(mainTableResultSet);
-                mainTableTableRowPrimaryValues.add(String.join(",", rowObject));
+                mainTableTableRowPrimaryValues.add(String.join("�", rowObject));
                 resultSetTime = System.currentTimeMillis();
+                if (count % 5000 == 0) {
+                    LOGGER.debug("Main Tables values pulled upto :" + count);
+                }
+                count++;
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -387,7 +570,7 @@ public class Processor {
      */
     private SipIntermediateJsonParser runQueryAndCreateIntermediateJson(int fileCounter, String
             query, List<String> pathTableList, List<String> mainTablePrimaryKeyColumns, TreeMap<String, String> charReplacement, PathReportBean pathReportBean) {
-        LOGGER.debug("QUERY  : " + query);
+        LOGGER.fatal("QUERY  : " + query);
         if (pathReportBean == null) {
             pathReportBean = PathReportBean.builder().build();
         }
@@ -468,11 +651,11 @@ public class Processor {
     }
 
     private Boolean getNext(ResultSet rs, PathReportBean pathReportBean) throws SQLException {
-        boolean returnvalue = true;
+        boolean returnValue = true;
         long startTime = System.currentTimeMillis();
-        returnvalue = rs.next();
+        returnValue = rs.next();
         pathReportBean.setResultSetTime(pathReportBean.getResultSetTime() + (System.currentTimeMillis() - startTime));
-        return returnvalue;
+        return returnValue;
     }
 
 

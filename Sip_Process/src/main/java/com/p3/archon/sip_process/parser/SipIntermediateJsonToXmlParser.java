@@ -4,6 +4,7 @@ import com.p3.archon.sip_process.bean.*;
 import com.p3.archon.sip_process.core.SipCreator;
 import com.p3.archon.sip_process.utility.Utility;
 import lombok.SneakyThrows;
+import org.apache.log4j.Logger;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -38,11 +39,18 @@ public class SipIntermediateJsonToXmlParser {
     List<String> attachmentFiles;
     private String attachmentFileLocation;
     ReportBean reportBean;
+    private Map<String, PrintWriter> tablePrintWriter;
+    private Map<String, Dictionary> tableIdsValueSet = new HashMap<>();
+    private boolean isSingleTable;
+    Map<String, Dictionary> tableDictionary;
+    private long writerWritingTime;
 
-    private String NULL_VALUE = "NULL VALUE";
+    private Logger LOGGER = Logger.getLogger(this.getClass().getName());
 
     @SneakyThrows
-    public SipIntermediateJsonToXmlParser(InputArgs inputBean, SipCreator sipCreator, Map<String, Integer> columnDataTypeMap, ReportBean reportBean, boolean isSingleTable, TablewithRelationBean tablewithRelationBean) {
+    public SipIntermediateJsonToXmlParser(InputArgs inputBean, SipCreator sipCreator, Map<String, Integer> columnDataTypeMap,
+                                          ReportBean reportBean, boolean isSingleTable, TablewithRelationBean tablewithRelationBean,
+                                          Map<String, PrintWriter> tablePrintWriter, Map<String, Dictionary> tableDictionary) {
         this.inputBean = inputBean;
         this.outputLocation = inputBean.getOutputLocation();
         this.columnDataTypeMap = columnDataTypeMap;
@@ -52,9 +60,22 @@ public class SipIntermediateJsonToXmlParser {
         this.reportBean = reportBean;
         this.attachmentFiles = new ArrayList<>();
         this.tablewithRelationBean = tablewithRelationBean;
+        this.tablePrintWriter = tablePrintWriter;
+        this.isSingleTable = isSingleTable;
+        this.tableDictionary = tableDictionary;
+        this.writerWritingTime = 0;
+        initializeTableIdsValueSet();
         if (!isSingleTable) {
             getIntermediateFileList();
         }
+    }
+
+    private void initializeTableIdsValueSet() {
+        tablePrintWriter.keySet().forEach(
+                tableName -> {
+                    tableIdsValueSet.put(tableName, new Hashtable());
+                }
+        );
     }
 
     private void getIntermediateFileList() {
@@ -72,6 +93,11 @@ public class SipIntermediateJsonToXmlParser {
     }
 
     public void joinAllJson() {
+
+        if (!isSingleTable) {
+            fileNamesList.clear();
+            getIntermediateFileList();
+        }
         Collections.sort(fileNamesList);
         String mainFileName = fileNamesList.get(0);
         String mainFileLines = Utility.readLineByLine(outputLocation + File.separator + mainFileName);
@@ -93,15 +119,12 @@ public class SipIntermediateJsonToXmlParser {
         updateAllContainingElements(rootTableJson, anotherRootTableJson, mainTable, containsRootTableObjectRowSet);
         updateAllRemainingRowElements(rootTableJson, anotherRootTableJson, rootTableObjectRowSet, anotherRootTableObjectRowSet);
     }
-
     private void updateAllContainingElements(JSONObject rootTableJson, JSONObject anotherRootTableJson, String mainTable, Set<String> containsRootTableObjectRowSet) {
         for (String containRowValue : containsRootTableObjectRowSet) {
-
             JSONObject rootTableRowJsonElements = rootTableJson.getJSONObject(containRowValue);
             JSONObject anotherRootTableRowJsonElements = anotherRootTableJson.getJSONObject(containRowValue);
             Set<String> rootTableRowJsonElementsSet = getRowElementsSet(mainTable, rootTableRowJsonElements);
             Set<String> anotherRootTableRowJsonElementsSet = getRowElementsSet(mainTable, anotherRootTableRowJsonElements);
-
             if (!rootTableRowJsonElementsSet.isEmpty() || !anotherRootTableRowJsonElementsSet.isEmpty()) {
                 Set<String> remainingRootTableRowJsonElementsSet = getRemainingElements(rootTableRowJsonElementsSet, anotherRootTableRowJsonElementsSet);
                 if (remainingRootTableRowJsonElementsSet.isEmpty()) {
@@ -114,14 +137,12 @@ public class SipIntermediateJsonToXmlParser {
             }
         }
     }
-
     private void updateAllRemainingRowElements(JSONObject rootTableJson, JSONObject anotherRootTableJson, Set<String> rootTableObjectRowSet, Set<String> anotherRootTableObjectRowSet) {
         Set<String> remainingRootTableObjectRowSet = getRemainingElements(rootTableObjectRowSet, anotherRootTableObjectRowSet);
         for (String remainingRow : remainingRootTableObjectRowSet) {
             rootTableJson.put(remainingRow, anotherRootTableJson.get(remainingRow));
         }
     }
-
     private void traversalIntoNextLevel(JSONObject rootTableRowJsonElements, JSONObject anotherRootTableRowJsonElements, Set<String> anotherRootTableRowJsonElementsSet) {
         if (!anotherRootTableRowJsonElementsSet.isEmpty()) {
             for (String remainingRowElements : anotherRootTableRowJsonElementsSet) {
@@ -131,26 +152,20 @@ public class SipIntermediateJsonToXmlParser {
             }
         }
     }
-
     private Set<String> getRowElementsSet(String mainTable, JSONObject rootTableRowJsonElements) {
         return rootTableRowJsonElements.keySet().stream().filter(getWithoutRootName(mainTable)).collect(Collectors.toSet());
     }
-
     private Set<String> getRemainingElements(Set<String> rootTableObjectRowSet, Set<String> anotherRootTableObjectRowSet) {
         Set<String> remainingRootTableObjectRowSet = new LinkedHashSet<>();
         remainingRootTableObjectRowSet.addAll(anotherRootTableObjectRowSet);
         remainingRootTableObjectRowSet.removeAll(rootTableObjectRowSet);
         return remainingRootTableObjectRowSet;
     }
-
     private Predicate<String> getWithoutRootName(String mainTable) {
         return columnName -> !columnName.contains(mainTable + ".");
     }
-
-
     @SneakyThrows
     public Map<String, Long> createXMlDocument(Map<String, Long> timeMaintainer) {
-
         File file = new File(Utility.getFileName(outputLocation, FINAL_JSON_FILE, 0, JSON));
         if (file.exists()) {
             file.delete();
@@ -159,13 +174,16 @@ public class SipIntermediateJsonToXmlParser {
         Utility.fileCreatorWithContent(finalJsonWriter, mergedJsonObject.toString());
         return JsonToXmlParser(mergedJsonObject.getJSONObject(mainTable), getModifiedTableNameBasedOnTableName(mainTable), timeMaintainer);
     }
-
     private Map<String, Long> JsonToXmlParser(JSONObject mergedJsonObject, TableDetails tableName, Map<String, Long> timeMaintainer) throws IOException {
-
         if (!mainTable.equalsIgnoreCase(tableName.getName())) {
             XML_STRING.append("<TABLE_" + tableName.getModifiedName().toUpperCase() + ">" + NEW_LINE);
         }
         for (String rowValue : Utility.getSetToList(mergedJsonObject.keySet())) {
+            if (inputBean.isIdsFile()) {
+                long writerTime = System.currentTimeMillis();
+                appendValuesIntoIdsFile(tableName, rowValue);
+                reportBean.setIdsFileWritingTime(reportBean.getIdsFileWritingTime() + (System.currentTimeMillis() - writerTime));
+            }
             parseTableRowElements(mergedJsonObject, tableName, rowValue, timeMaintainer);
             if (mainTable.equalsIgnoreCase(tableName.getName())) {
                 return getMainTableRowEnd(timeMaintainer);
@@ -176,9 +194,23 @@ public class SipIntermediateJsonToXmlParser {
         }
         return new LinkedHashMap<>();
     }
-
+    private void appendValuesIntoIdsFile(TableDetails tableName, String rowValue) {
+        List<String> idsFileString = new ArrayList<>();
+        List<String> valuesList = Arrays.asList(rowValue.split("_"));
+        List<String> joinHeaderList = tableName.getKeyColumns();
+        for (int i = 0; i < joinHeaderList.size(); i++) {
+            if (valuesList.get(i).equalsIgnoreCase(EMPTY)) {
+                idsFileString.add(joinHeaderList.get(i) + " = " + "\' \'");
+            } else {
+                idsFileString.add(joinHeaderList.get(i) + " = " + valuesList.get(i));
+            }
+        }
+        if (!tableName.getName().equalsIgnoreCase(mainTable)) {
+            String idsFileInsertionString = String.join(" and ", idsFileString);
+            tablePrintWriter.get(tableName.getName()).write(idsFileInsertionString + NEW_LINE);
+        }
+    }
     private Map<String, Long> getMainTableRowEnd(Map<String, Long> timeMaintainer) throws IOException {
-
         timeMaintainer.put(SINGLE_SIP_RECORD_TIME, (System.currentTimeMillis() - timeMaintainer.get(SINGLE_SIP_RECORD_TIME)));
         long batchAssemblerAddTime = System.currentTimeMillis();
         sipCreator.getBatchAssembler().add(RecordData.builder().data(XML_STRING.toString()).attachmentFiles(attachmentFiles).build());
@@ -187,7 +219,6 @@ public class SipIntermediateJsonToXmlParser {
         XML_STRING.delete(0, XML_STRING.length());
         return timeMaintainer;
     }
-
     private void parseTableRowElements(JSONObject mergedJsonObject, TableDetails tableName, String rowValue, Map<String, Long> timeMaintainer) throws IOException {
         XML_STRING.append("<" + tableName.getModifiedName().toUpperCase() + "_ROW>" + NEW_LINE);
         JSONObject rowJsonObject = mergedJsonObject.getJSONObject(rowValue);
@@ -272,5 +303,15 @@ public class SipIntermediateJsonToXmlParser {
 
     public TableDetails getModifiedTableNameBasedOnTableName(String tableName) {
         return tablewithRelationBean.getTableList().stream().filter(tableDetails -> tableDetails.getName().equalsIgnoreCase(tableName)).findFirst().get();
+    }
+
+    public void generateIdsFileCreation() {
+
+        if (inputBean.isIdsFile()) {
+            tablePrintWriter.entrySet().forEach(tableWriter -> {
+                tableWriter.getValue().flush();
+                tableWriter.getValue().close();
+            });
+        }
     }
 }

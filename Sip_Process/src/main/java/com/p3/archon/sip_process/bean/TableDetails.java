@@ -37,5 +37,4 @@ public class TableDetails {
     private List<String> relationshipList = new ArrayList<>();
     @Builder.Default
     private TreeMap<String, String> oldModifyColumn = new TreeMap<>();
-
 }

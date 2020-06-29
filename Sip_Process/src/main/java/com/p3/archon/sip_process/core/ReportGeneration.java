@@ -49,12 +49,17 @@ public class ReportGeneration {
     private long startTime;
     private long endTime;
 
+    private boolean idsFile;
+    private boolean sortIdsFile;
+
     public static final String ARCHON_IMG = "archon.png";
 
-    public ReportGeneration(ReportBean reportBean, String outputLocation, String JOB_ID) {
+    public ReportGeneration(ReportBean reportBean, String outputLocation, String jobId, boolean idsFile, boolean sortIdsFile) {
         this.reportBean = reportBean;
         this.outputLocation = outputLocation;
-        this.JOB_ID = JOB_ID;
+        this.JOB_ID = jobId;
+        this.idsFile = idsFile;
+        this.sortIdsFile = sortIdsFile;
         setValuesIntoReportVariables();
     }
 
@@ -168,6 +173,14 @@ public class ReportGeneration {
                     "               <td colspan=\"3\">Average time taken for db connection</td>\n" +
                     "               <td colspan=\"3\">" + ((double) totalDBConnectionTime / dbHitCounter) / 60000 + " minutes</td>\n" +
                     "         </tr>\n" +
+                    (idsFile ? "         <tr>\n" +
+                            "               <td colspan=\"3\">Ids File Writing Time</td>\n" +
+                            "               <td colspan=\"3\">" + ((double) reportBean.getIdsFileWritingTime()) / 60000 + " minutes</td>\n" +
+                            "         </tr>\n" : "") +
+                    ((idsFile && sortIdsFile) ? "         <tr>\n" +
+                            "               <td colspan=\"3\">Ids File Sorting  Time</td>\n" +
+                            "               <td colspan=\"3\">" + ((double) reportBean.getIdsFileSortTime()) / 60000 + " minutes</td>\n" +
+                            "         </tr>\n" : "") +
                     "     </table> \n" +
                     "  </body>\n" +
                     "  <br> \n" +

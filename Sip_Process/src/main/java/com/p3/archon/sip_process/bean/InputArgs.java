@@ -39,6 +39,19 @@ public class InputArgs {
     private boolean showDatetime;
     private String jobId;
 
+    //  Record File Process
+    private boolean isRecordFileProcess;
+    private List<String> fileNameList;
+    private String mainTablePrimaryColumnFileName;
+    private String columnDataType;
+
+    //  Clean Operation
+    private boolean isCleanUpData;
+
+    // isIdfFile
+
+    private boolean isIdsFile;
+    private boolean sortIdsFile;
 
     public void validateInputs() {
         /**

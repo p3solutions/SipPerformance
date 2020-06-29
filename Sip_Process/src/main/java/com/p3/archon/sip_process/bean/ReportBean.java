@@ -37,6 +37,8 @@ public class ReportBean {
     private long endTime = 0;
     @Builder.Default
     private String whereCondition = "";
-
-
+    @Builder.Default
+    private long idsFileWritingTime = 0;
+    @Builder.Default
+    private long idsFileSortTime = 0;
 }

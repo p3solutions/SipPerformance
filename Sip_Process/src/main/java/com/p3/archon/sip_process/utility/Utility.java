@@ -9,6 +9,8 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Stream;
 
+import static com.p3.archon.sip_process.constants.SipPerformanceConstant.NEW_LINE;
+
 /**
  * Created by Suriyanarayanan K
  * on 05/05/20 4:46 PM.
@@ -18,7 +20,7 @@ public class Utility {
     public static String readLineByLine(String filePath) {
         StringBuilder contentBuilder = new StringBuilder();
         try (Stream<String> stream = Files.lines(Paths.get(filePath), StandardCharsets.UTF_8)) {
-            stream.forEach(s -> contentBuilder.append(s).append("\n"));
+            stream.forEach(s -> contentBuilder.append(s).append(NEW_LINE));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -64,7 +66,7 @@ public class Utility {
     }
 
     public static String LoggerPrintFor10000Line(long count) {
-        return "======================================================" + "\n" + "" + "\n" + count + " Processed" + "\n" + "" + "\n" + "======================================================";
+        return "\n" + "======================================================" + "\n" + "" + "\n" + count + " Processed" + "\n" + "" + "\n" + "======================================================";
     }
 
 }

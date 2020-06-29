@@ -17,8 +17,7 @@ import java.io.PrintWriter;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.p3.archon.sip_process.constants.SipPerformanceConstant.INTERMEDIATE_JSON_FILE;
-import static com.p3.archon.sip_process.constants.SipPerformanceConstant.JSON;
+import static com.p3.archon.sip_process.constants.SipPerformanceConstant.*;
 
 /**
  * Created by Suriyanarayanan K
@@ -29,7 +28,6 @@ public class SipIntermediateJsonParser {
     private List<String> headerList = null;
     private String fileLocationWithName = null;
     private Map<String, Long> tableColumnCount = null;
-    private Map<String, List<String>> tableColumnValues = new LinkedHashMap<>();
     private List<String> tablesList = new ArrayList<>();
     private String mainTable;
 
@@ -106,9 +104,7 @@ public class SipIntermediateJsonParser {
             String[] line = null;
             do {
                 if (line != null && line.length != 0) {
-
                     if (checkMatching(line, mainTableRowRecordValue)) {
-                        LOGGER.debug("Row Array Element :" + Arrays.asList(line));
                         parseJsonResult(rootTableJson.getJSONObject(tablesList.get(0)), line, tableColumnCount, tablesList, tablesList.get(0), new ArrayList<>(), 0, 0, 0);
                     } else {
                         returnPreviousList = Arrays.asList(line);
@@ -129,7 +125,7 @@ public class SipIntermediateJsonParser {
         for (int i = 0; i < mainTablePrimaryKeyCount; i++) {
             matchingCheckingList.add(line[i]);
         }
-        return (mainTableRowRecordValue.equalsIgnoreCase(String.join(",", matchingCheckingList)));
+        return (mainTableRowRecordValue.equalsIgnoreCase(String.join("�", matchingCheckingList)));
     }
 
     private JSONObject parseJsonResult(JSONObject result, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPositon, int tablePosition, int uniqueValue) {
@@ -137,7 +133,6 @@ public class SipIntermediateJsonParser {
         if (!checkList.contains(tableName)) {
             checkList.add(tableName);
             String idValue = getUniqueValue(line, tablePrimaryHeaderPosition.get(tableName));
-
             if (!idValue.contains("null")) {
                 if (result.isEmpty()) {
                     parseLineaAndInsertIntoJson(result, line, tableColumnValues, tableList, tableName, checkList, lineStartPositon, tablePosition, columnValuePair, idValue);
@@ -193,13 +188,11 @@ public class SipIntermediateJsonParser {
 
     private void createColumnValuePair(String[] line, Map<String, Long> tableColumnValues, String tableName, int lineStartPosition, JSONObject columnValuePair) {
 
-        LOGGER.debug("Column Values :" + tableColumnValues);
-        LOGGER.debug("Start Position :" + lineStartPosition);
-        LOGGER.debug("End Position :" + (lineStartPosition + tableColumnValues.get(tableName)));
+
         List<String> tempHeader = headerList.stream().filter(header -> header.startsWith(tableName + ".")).collect(Collectors.toList());
-        LOGGER.debug("Table Header List :" + tempHeader);
+
         List<String> values = Arrays.asList(line).subList(lineStartPosition, ((int) (lineStartPosition + tableColumnValues.get(tableName))));
-        LOGGER.debug("Table Values List :" + values);
+
         for (int j = 0; j < tempHeader.size(); j++) {
             if (j > values.size() - 1) {
                 columnValuePair.put(tempHeader.get(j), "");
@@ -212,7 +205,12 @@ public class SipIntermediateJsonParser {
     private String getUniqueValue(String[] line, List<Integer> positionsList) {
         List<String> positionPrimaryKeyValues = new ArrayList<>();
         for (Integer position : positionsList) {
-            positionPrimaryKeyValues.add(line[position]);
+            if (line[position].isEmpty() || line[position].isBlank()) {
+                positionPrimaryKeyValues.add(EMPTY);
+            } else {
+                positionPrimaryKeyValues.add(line[position]);
+            }
+            // positionPrimaryKeyValues.add(line[position]);
         }
         return String.join("_", positionPrimaryKeyValues);
     }
