@@ -38,6 +38,8 @@ public class SipIntermediateJsonParser {
 
     private CSVReader csvReader = null;
     private Logger LOGGER = Logger.getLogger(this.getClass().getName());
+    private String[] previousLine;
+    CSVParser parser;
 
     public SipIntermediateJsonParser(String fileLocationWithName, Map<String, Long> tableColumnCount, List<String> headerList,
                                      Map<String, List<Integer>> tablePrimaryHeaderPosition, int fileCounter,
@@ -58,16 +60,11 @@ public class SipIntermediateJsonParser {
 
     @SneakyThrows
     private void initializeCSvReader() {
-        CSVParser parser;
+
         parser = new CSVParserBuilder().withSeparator('�')
                 .withIgnoreQuotations(true)
-                //.withFieldAsNull(CSVReaderNullFieldIndicator.BOTH).withIgnoreLeadingWhiteSpace(true)
-                //.withIgnoreQuotations(false).withQuoteChar('"').withStrictQuotes(false)
                 .build();
 
-        //.withSeparator(',')
-        //.withIgnoreQuotations(true)
-        //.build();
         csvReader = new CSVReaderBuilder(new FileReader(fileLocationWithName))
                 .withCSVParser(parser)
                 .withSkipLines(1).build();
@@ -78,9 +75,10 @@ public class SipIntermediateJsonParser {
         csvReader.close();
     }
 
-    public List<String> startParsing(String mainTableRowRecordValue, List<String> previousLineRecord) {
+
+    public List<String> startParsing(String mainTableRowRecordValue, List<String> previousLineRecord, boolean isAlreadyValuesContains) {
         JSONObject rootTableJson = new JSONObject();
-        List<String> previousLine = parseAllLinesAndPrepareIntermediateJson(rootTableJson, mainTableRowRecordValue, previousLineRecord);
+        List<String> previousLine = parseAllLinesAndPrepareIntermediateJson(rootTableJson, mainTableRowRecordValue, previousLineRecord, isAlreadyValuesContains);
         PrintWriter intermediateJsonWriter = null;
         try {
             intermediateJsonWriter = new PrintWriter(Utility.getFileName(outputLocation, INTERMEDIATE_JSON_FILE, fileCounter, JSON));
@@ -91,7 +89,7 @@ public class SipIntermediateJsonParser {
         return previousLine;
     }
 
-    private List<String> parseAllLinesAndPrepareIntermediateJson(JSONObject rootTableJson, String mainTableRowRecordValue, List<String> previousLineRecord) {
+    private List<String> parseAllLinesAndPrepareIntermediateJson(JSONObject rootTableJson, String mainTableRowRecordValue, List<String> previousLineRecord, boolean isAlreadyValuesContains) {
 
         List<String> returnPreviousList = new ArrayList<>();
         try {
@@ -188,11 +186,8 @@ public class SipIntermediateJsonParser {
 
     private void createColumnValuePair(String[] line, Map<String, Long> tableColumnValues, String tableName, int lineStartPosition, JSONObject columnValuePair) {
 
-
         List<String> tempHeader = headerList.stream().filter(header -> header.startsWith(tableName + ".")).collect(Collectors.toList());
-
         List<String> values = Arrays.asList(line).subList(lineStartPosition, ((int) (lineStartPosition + tableColumnValues.get(tableName))));
-
         for (int j = 0; j < tempHeader.size(); j++) {
             if (j > values.size() - 1) {
                 columnValuePair.put(tempHeader.get(j), "");
@@ -210,7 +205,6 @@ public class SipIntermediateJsonParser {
             } else {
                 positionPrimaryKeyValues.add(line[position]);
             }
-            // positionPrimaryKeyValues.add(line[position]);
         }
         return String.join("_", positionPrimaryKeyValues);
     }

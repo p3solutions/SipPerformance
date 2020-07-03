@@ -4,7 +4,6 @@ import com.p3.archon.sip_process.bean.*;
 import com.p3.archon.sip_process.core.SipCreator;
 import com.p3.archon.sip_process.utility.Utility;
 import lombok.SneakyThrows;
-import org.apache.log4j.Logger;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -13,6 +12,7 @@ import java.io.PrintWriter;
 import java.sql.Types;
 import java.util.*;
 import java.util.function.Predicate;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import static com.p3.archon.sip_process.constants.SipPerformanceConstant.*;
@@ -179,7 +179,7 @@ public class SipIntermediateJsonToXmlParser {
             XML_STRING.append("<TABLE_" + tableName.getModifiedName().toUpperCase() + ">" + NEW_LINE);
         }
         for (String rowValue : Utility.getSetToList(mergedJsonObject.keySet())) {
-            if (inputBean.isIdsFile()) {
+            if (inputBean.isIdsFile() && needToWriteIdsFile(rowValue, EMPTY)) {
                 long writerTime = System.currentTimeMillis();
                 appendValuesIntoIdsFile(tableName, rowValue);
                 reportBean.setIdsFileWritingTime(reportBean.getIdsFileWritingTime() + (System.currentTimeMillis() - writerTime));
@@ -194,6 +194,17 @@ public class SipIntermediateJsonToXmlParser {
         }
         return new LinkedHashMap<>();
     }
+
+    private boolean needToWriteIdsFile(String rowValue, String empty) {
+        List<String> rowValueList = Arrays.asList(rowValue.split("_"));
+        List<String> isAllEmpty = rowValueList.stream().filter(value -> value.equalsIgnoreCase(EMPTY)).collect(Collectors.toList());
+        if (rowValueList.size() == isAllEmpty.size()) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
     private void appendValuesIntoIdsFile(TableDetails tableName, String rowValue) {
         List<String> idsFileString = new ArrayList<>();
         List<String> valuesList = Arrays.asList(rowValue.split("_"));

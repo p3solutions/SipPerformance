@@ -2,7 +2,6 @@ package com.p3.archon.sip_process.core;
 
 import com.p3.archon.sip_process.bean.BinaryData;
 import com.p3.archon.sip_process.utility.Utility;
-import org.apache.log4j.Logger;
 import org.apache.xmlbeans.impl.common.XMLChar;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -22,6 +21,7 @@ import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.*;
+import org.apache.log4j.Logger;
 
 import static com.p3.archon.sip_process.constants.SipPerformanceConstant.*;
 

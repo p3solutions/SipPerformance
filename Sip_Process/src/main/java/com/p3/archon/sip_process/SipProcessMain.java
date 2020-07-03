@@ -1,6 +1,7 @@
 package com.p3.archon.sip_process;
 
 import com.p3.archon.sip_process.processor.Processor;
+import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 
 import java.util.Date;
@@ -13,8 +14,9 @@ public class SipProcessMain {
 
 
     public static void main(String[] args) {
+        Logger LOGGER = Logger.getLogger(SipProcessMain.class);
 
-        System.out.println("Start Time : " + new Date());
+        LOGGER.info("Start Time : " + new Date());
         /**
          *
          * Log 4j properties
@@ -24,7 +26,6 @@ public class SipProcessMain {
         Processor processor = new Processor();
         processor.setValuesIntoBean();
         processor.startExtraction();
-
-        System.out.println("End Time : " + new Date());
+        LOGGER.info("End Time : " + new Date());
     }
 }
