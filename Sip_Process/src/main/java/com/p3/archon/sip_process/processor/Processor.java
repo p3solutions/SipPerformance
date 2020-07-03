@@ -34,6 +34,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.stream.Collectors;
 
 import static com.p3.archon.sip_process.constants.SipPerformanceConstant.*;
+import static com.p3.archon.sip_process.utility.Utility.readLineByLineCount;
 import static java.util.Map.Entry.comparingByKey;
 import static java.util.stream.Collectors.toMap;
 
@@ -58,11 +59,6 @@ public class Processor {
     private ReportBean reportBean;
     private Map<String, Dictionary> tableDictionary = new LinkedHashMap<>();
     private Map<String, PrintWriter> tablePrintWriter = new LinkedHashMap<>();
-
-
-    private long intermediateJsonTime = 0;
-    private long joinAllJsonTime = 0;
-    private long xmlDocumentTime = 0;
 
     private String IDS_FILE_LOCATION = "";
 
@@ -161,17 +157,12 @@ public class Processor {
      */
     public void startExtraction() {
 
-        /**
-         *  Responsible for Path and Query List
-         */
+
         PathandQueryCreator pathandQueryCreator = new PathandQueryCreator(inputBean);
         List<String> selectedTableList = pathandQueryCreator.getSelectedTableList();
         TreeMap<String, String> charReplacement = pathandQueryCreator.getCharacterReplacementMap();
         tablePrimaryJoinColumn = pathandQueryCreator.getPrimaryJoinColumn(selectedTableList);
-        reportBean.setTableRecordCount(initializeTableRecordCount(selectedTableList));
         reportBean.setWhereCondition(pathandQueryCreator.getAllTablesWhereCondition(selectedTableList));
-
-
         if (inputBean.isIdsFile()) {
             for (String table : selectedTableList) {
                 try {
@@ -190,7 +181,7 @@ public class Processor {
             startExtractBlobContent(selectedTableList, pathandQueryCreator.getSingleTableBlobQueryList(mainTableName, tablePrimaryJoinColumn), reportBean.getMainTablePerformance());
             String testFileLocation = Utility.getFileName(inputBean.getOutputLocation(), RECORD_FILE, fileCounter, TXT);
             String SINGLE_TABLE_QUERY = pathandQueryCreator.getSingleTableQuery(mainTableName);
-            //ids file query
+
             PathReportBean mainTablePerformance = reportBean.getMainTablePerformance();
             Map<String, List<String>> tablePrimaryKey = generateTablePrimaryKeyBasedOnTableList(selectedTableList);
             List<String> headerList = startExecutingQueryToRecordFileAndReturnAsHeaderList(SINGLE_TABLE_QUERY, charReplacement, mainTablePerformance, testFileLocation, tablePrimaryKey);
@@ -198,7 +189,6 @@ public class Processor {
         } else {
             Map<Integer, List<String>> pathTableList = pathandQueryCreator.startParsingAndCreationPathList(selectedTableList);
             Map<Integer, String> queryList = pathandQueryCreator.getConstructQueryList(pathTableList);
-            Map<Integer, Map<String, String>> pathIdsFileDistinctQuery = pathandQueryCreator.getIdsFileDistinctQueryList(pathTableList);
             long startConditionTime = System.currentTimeMillis();
             Connection connection = connectionChecker.checkConnection(inputBean);
             reportBean.getMainTablePerformance().setDbHitCounter(reportBean.getMainTablePerformance().getDbHitCounter() + 1);
@@ -212,6 +202,7 @@ public class Processor {
                 mainTableRowPrimaryValues = getMainTablePrimaryKeyColumnsValues(pathandQueryCreator, connection, mainTablePrimaryKeyColumns, charReplacement, reportBean);
                 startCreatingMainTableDebugFiles(mainTablePrimaryKeyColumns, mainTableRowPrimaryValues);
             }
+            reportBean.getChildTableRecordCount().put(mainTableName, (long) mainTableRowPrimaryValues.size());
             LOGGER.debug("Main Table Values was collected");
             reportBean.setTotalSourceSipRecord(mainTableRowPrimaryValues.size());
             Map<Integer, List<String>> filePreviousLinesMaintainer = new LinkedHashMap<>();
@@ -227,7 +218,7 @@ public class Processor {
         }
         startCreatingPdiSchemaFile();
         reportBean.setEndTime(new Date().getTime());
-        ReportGeneration reportGeneration = new ReportGeneration(reportBean, inputBean.getOutputLocation(), inputBean.getJobId(),inputBean.isIdsFile(),inputBean.isSortIdsFile());
+        ReportGeneration reportGeneration = new ReportGeneration(reportBean, inputBean.getOutputLocation(), inputBean.getJobId(), inputBean.isIdsFile(), inputBean.isSortIdsFile());
         reportGeneration.generatePerformanceReport();
         reportGeneration.generateExtractionAndSummaryReport();
     }
@@ -340,19 +331,10 @@ public class Processor {
             rowCounter = updateRecordTimeWithTimeMaintainer(rowCounter, timeMaintainer, reportBean);
             sipIntermediateJsonToXmlParser.generateIdsFileCreation();
         }
+        reportBean.getChildTableRecordCount().put(mainTableName, (long) (rowCounter - 1));
         reportBean.setTotalExtractedSipRecord((rowCounter - 1));
         singleTableSipCreator.getBatchAssembler().end();
     }
-
-
-    private Map<String, Long> initializeTableRecordCount(List<String> selectedTableList) {
-        Map<String, Long> tableRecordCount = new LinkedHashMap<>();
-        for (String table : selectedTableList) {
-            tableRecordCount.put(table, (long) 0);
-        }
-        return tableRecordCount;
-    }
-
 
     private void startCreatingPdiSchemaFile() {
         PdiSchemaGeneratorRussianDoll pdiSchemaGeneratorRussianDoll = new PdiSchemaGeneratorRussianDoll(inputBean, columnDataTypeMap);
@@ -369,20 +351,32 @@ public class Processor {
         long rowCounter = 1;
         try {
             Map<String, Long> timeMaintainer = null;
+            List<String> duplicateRowFinderInMainTable = new ArrayList<>();
+            boolean isAlreadyValuesContains;
             for (String mainTableKeyRowsValue : mainTableRowPrimaryValues) {
-                long interTime = System.currentTimeMillis();
-                timeMaintainer = new LinkedHashMap<>();
-                timeMaintainer.put(SINGLE_SIP_RECORD_TIME, System.currentTimeMillis());
-                LOGGER.fatal(rowCounter + " : Row Start Processing");
-                customThreadPool.submit(() -> {
-                    sipIntermediateJsonParserMap.entrySet().parallelStream().forEach(
-                            sipIntermediateJsonParserEntry -> {
-                                startGeneratingIntermediateJsonBasedOnMainTableValues(filePreviousLinesMaintainer, sipIntermediateJsonParserMap.get(sipIntermediateJsonParserEntry.getKey()), mainTableKeyRowsValue, sipIntermediateJsonParserEntry.getKey());
-                            });
-                }).get();
-                intermediateJsonTime += System.currentTimeMillis() - interTime;
-                startAddingRecordIntoBatchAssembler(sipIntermediateJsonToXmlParser, timeMaintainer);
-                rowCounter = updateRecordTimeWithTimeMaintainer(rowCounter, timeMaintainer, reportBean);
+                if (mainTableKeyRowsValue.equalsIgnoreCase("884061910")) {
+                    System.out.println("Main table value");
+                }
+                if (duplicateRowFinderInMainTable.contains(mainTableKeyRowsValue)) {
+                    isAlreadyValuesContains = true;
+                } else {
+                    isAlreadyValuesContains = false;
+                    duplicateRowFinderInMainTable.add(mainTableKeyRowsValue);
+                }
+                if (!isAlreadyValuesContains) {
+                    timeMaintainer = new LinkedHashMap<>();
+                    timeMaintainer.put(SINGLE_SIP_RECORD_TIME, System.currentTimeMillis());
+                    LOGGER.fatal(rowCounter + " : Row Start Processing");
+                    boolean finalIsAlreadyValuesContains = isAlreadyValuesContains;
+                    customThreadPool.submit(() -> {
+                        sipIntermediateJsonParserMap.entrySet().parallelStream().forEach(
+                                sipIntermediateJsonParserEntry -> {
+                                    startGeneratingIntermediateJsonBasedOnMainTableValues(filePreviousLinesMaintainer, sipIntermediateJsonParserMap.get(sipIntermediateJsonParserEntry.getKey()), mainTableKeyRowsValue, sipIntermediateJsonParserEntry.getKey(), finalIsAlreadyValuesContains);
+                                });
+                    }).get();
+                    startAddingRecordIntoBatchAssembler(sipIntermediateJsonToXmlParser, timeMaintainer);
+                    rowCounter = updateRecordTimeWithTimeMaintainer(rowCounter, timeMaintainer, reportBean);
+                }
             }
             sipIntermediateJsonToXmlParser.generateIdsFileCreation();
             for (Map.Entry<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserEntry : sipIntermediateJsonParserMap.entrySet()) {
@@ -390,11 +384,13 @@ public class Processor {
             }
             sipCreator.getBatchAssembler().end();
 
+            File[] idsFileArray = new File(IDS_FILE_LOCATION).listFiles((dir, name) -> name.toLowerCase().endsWith(".ids"));
             if (inputBean.isIdsFile() && inputBean.isSortIdsFile()) {
                 long startDuplicateRemovalTime = System.currentTimeMillis();
-                duplicateIdsFileOperation();
+                duplicateIdsFileOperation(idsFileArray);
                 reportBean.setIdsFileSortTime(reportBean.getIdsFileSortTime() + (System.currentTimeMillis() - startDuplicateRemovalTime));
             }
+            reportBean.getChildTableRecordCount().putAll(calculatingChildTableCount(idsFileArray));
         } catch (Exception e) {
             e.printStackTrace();
             LOGGER.error("Error :" + e.getMessage());
@@ -404,8 +400,18 @@ public class Processor {
         LOGGER.debug("Total No.of.Records Processed :" + (rowCounter - 1));
     }
 
-    private void duplicateIdsFileOperation() {
-        File[] idsFileArray = new File(IDS_FILE_LOCATION).listFiles((dir, name) -> name.toLowerCase().endsWith(".ids"));
+
+    private Map<String, Long> calculatingChildTableCount(File[] idsFileArray) {
+        long childTableRecordCountingTime = System.currentTimeMillis();
+        Map<String, Long> childTableCount = new LinkedHashMap<>();
+        for (File file : idsFileArray) {
+            childTableCount.put(file.getName().split("\\.")[0], readLineByLineCount(file.getAbsolutePath()));
+        }
+        reportBean.setIdsFileCountTime(System.currentTimeMillis() - childTableRecordCountingTime);
+        return childTableCount;
+    }
+
+    private void duplicateIdsFileOperation(File[] idsFileArray) {
         for (File file : idsFileArray) {
             try {
                 List<File> l = ExternalSort.sortInBatch(file);
@@ -435,19 +441,17 @@ public class Processor {
      * @return
      */
     private Map<String, Long> startAddingRecordIntoBatchAssembler(SipIntermediateJsonToXmlParser sipIntermediateJsonToXmlParser, Map<String, Long> timeMaintainer) {
-        long joinTime = System.currentTimeMillis();
+
         sipIntermediateJsonToXmlParser.joinAllJson();
-        joinAllJsonTime += System.currentTimeMillis() - joinTime;
-        long docTime = System.currentTimeMillis();
         Map<String, Long> batchAssemblerTiming = sipIntermediateJsonToXmlParser.createXMlDocument(timeMaintainer);
-        xmlDocumentTime += System.currentTimeMillis() - docTime;
         return batchAssemblerTiming;
     }
 
-    private void startGeneratingIntermediateJsonBasedOnMainTableValues(Map<Integer, List<String>> filePreviousLinesMaintainer, SipIntermediateJsonParser sipIntermediateJsonParser, String mainTableKeyRowsValue, Integer key) {
-        List endLineCount = sipIntermediateJsonParser.startParsing(mainTableKeyRowsValue, filePreviousLinesMaintainer.get(key));
+    private void startGeneratingIntermediateJsonBasedOnMainTableValues(Map<Integer, List<String>> filePreviousLinesMaintainer, SipIntermediateJsonParser sipIntermediateJsonParser, String mainTableKeyRowsValue, Integer key, boolean isAlreadyValuesContains) {
+        List<String> endLineCount = sipIntermediateJsonParser.startParsing(mainTableKeyRowsValue, filePreviousLinesMaintainer.get(key), isAlreadyValuesContains);
         filePreviousLinesMaintainer.put(key, endLineCount);
     }
+
 
     private Map<Integer, SipIntermediateJsonParser> getStartGeneratingRecordFileAndCreateIntermediateJsonBean(Map<Integer, List<String>> pathTableList, Map<Integer, String> queryList, List<String> mainTablePrimaryKeyColumns, Map<Integer, List<String>> filePreviousLinesMaintainer, ForkJoinPool customThreadPool, TreeMap<String, String> charReplacement, Map<Integer, PathReportBean> pathPerformanceMap, PathandQueryCreator pathandQueryCreator) {
 
@@ -525,8 +529,10 @@ public class Processor {
         try {
             long connectionTime = System.currentTimeMillis();
             statement = connection.createStatement();
+            String ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN = " ORDER BY " + String.join(",", mainTablePrimaryKeyColumns);
             String QUERY_STRING = " SELECT " + Utility.getColumnAsQueryFramer(mainTablePrimaryKeyColumns) + " from " +
-                    inputBean.getSchemaName() + "." + mainTableName + pathandQueryCreator.getMainTableFilterQuery();
+                    inputBean.getSchemaName() + "." + mainTableName + pathandQueryCreator.getMainTableFilterQuery() + ORDER_BY_MAIN_TABLE_PRIMARY_COLUMN;
+            LOGGER.debug("Main Table Query :" + QUERY_STRING);
             mainTableResultSet = statement.executeQuery(QUERY_STRING);
             reportBean.getMainTablePerformance().setDbConnectionTime(reportBean.getMainTablePerformance().getDbConnectionTime() + (System.currentTimeMillis() - connectionTime));
             ResultSetMetaData mainTableResultSetMetaData = mainTableResultSet.getMetaData();
@@ -606,7 +612,6 @@ public class Processor {
             }
             updateCounterAndTimeIntoPerformance(pathReportBean, rowObjectCreator);
             Utility.endWriter(recordFileWriter);
-
         } catch (SQLException | FileNotFoundException | UnsupportedEncodingException e) {
             e.printStackTrace();
         }
@@ -651,7 +656,7 @@ public class Processor {
     }
 
     private Boolean getNext(ResultSet rs, PathReportBean pathReportBean) throws SQLException {
-        boolean returnValue = true;
+        boolean returnValue;
         long startTime = System.currentTimeMillis();
         returnValue = rs.next();
         pathReportBean.setResultSetTime(pathReportBean.getResultSetTime() + (System.currentTimeMillis() - startTime));

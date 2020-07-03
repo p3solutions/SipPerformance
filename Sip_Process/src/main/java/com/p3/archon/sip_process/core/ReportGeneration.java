@@ -178,9 +178,13 @@ public class ReportGeneration {
                             "               <td colspan=\"3\">" + ((double) reportBean.getIdsFileWritingTime()) / 60000 + " minutes</td>\n" +
                             "         </tr>\n" : "") +
                     ((idsFile && sortIdsFile) ? "         <tr>\n" +
-                            "               <td colspan=\"3\">Ids File Sorting  Time</td>\n" +
+                            "               <td colspan=\"3\">Ids File Sorting Time</td>\n" +
                             "               <td colspan=\"3\">" + ((double) reportBean.getIdsFileSortTime()) / 60000 + " minutes</td>\n" +
                             "         </tr>\n" : "") +
+                    "         <tr>\n" +
+                    "               <td colspan=\"3\">Calculating Child Table Count </td>\n" +
+                    "               <td colspan=\"3\">" + ((double) reportBean.getIdsFileCountTime()) / 60000 + " minutes</td>\n" +
+                    "         </tr>\n" +
                     "     </table> \n" +
                     "  </body>\n" +
                     "  <br> \n" +
@@ -220,12 +224,11 @@ public class ReportGeneration {
         summaryBuffer = createHeader(summaryBuffer, new Object[]{timeDiff(endTime - startTime)}, false);
         generateReport(summaryBuffer, outputLocation + File.separator + "outSummary.html", "Summary");
         createQueryTable(extractionBuffer);
-        if (reportBean.getTableRecordCount().keySet().size() > 1)
+        if (reportBean.getChildTableRecordCount().keySet().size() > 1)
             createUniqueTableHeader(extractionBuffer);
         extractionBuffer = createHeader(extractionBuffer, new Object[]{timeDiff(endTime - startTime)}, false);
         generateReport(extractionBuffer, outputLocation + File.separator + "out.html", "Extraction");
         viewFormatter(prepareObjectArray(7), true);
-
     }
 
     protected void createReport(String inputFile, String title) {
@@ -268,10 +271,10 @@ public class ReportGeneration {
         sb.append("<td colspan=\"2\" align=\"center\"><b>" + "Unique Record Count" + "</b></td>");
         sb.append("</tr></thead><tbody>");
 
-        for (Map.Entry<String, Long> tc : reportBean.getTableRecordCount().entrySet()) {
+        for (Map.Entry<String, Long> tc : reportBean.getChildTableRecordCount().entrySet()) {
             sb.append("<tr>");
-            sb.append("<td colspan=\"3\" align=\"left\">" + tc.getKey() + "</td>");
-            sb.append("<td colspan=\"2\" align=\"right\">" + "N/A" + "</td>");
+            sb.append("<td colspan=\"3\" align=\"left\">" + tc.getKey().toUpperCase() + "</td>");
+            sb.append("<td colspan=\"2\" align=\"right\">" + tc.getValue() + "</td>");
             sb.append("</tr>");
         }
         return sb;

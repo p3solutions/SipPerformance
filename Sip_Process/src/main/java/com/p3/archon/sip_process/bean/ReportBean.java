@@ -32,7 +32,7 @@ public class ReportBean {
     @Builder.Default
     private PathReportBean mainTablePerformance = PathReportBean.builder().build();
     @Builder.Default
-    private Map<String, Long> tableRecordCount = new LinkedHashMap<>();
+    private Map<String, Long> childTableRecordCount = new LinkedHashMap<>();
     @Builder.Default
     private long endTime = 0;
     @Builder.Default
@@ -41,4 +41,6 @@ public class ReportBean {
     private long idsFileWritingTime = 0;
     @Builder.Default
     private long idsFileSortTime = 0;
+    @Builder.Default
+    private long idsFileCountTime = 0;
 }

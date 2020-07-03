@@ -1,8 +1,6 @@
 package com.p3.archon.sip_process.utility;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -19,12 +17,36 @@ public class Utility {
 
     public static String readLineByLine(String filePath) {
         StringBuilder contentBuilder = new StringBuilder();
-        try (Stream<String> stream = Files.lines(Paths.get(filePath), StandardCharsets.UTF_8)) {
-            stream.forEach(s -> contentBuilder.append(s).append(NEW_LINE));
+        try (Stream<String> fileLines = Files.lines(Paths.get(filePath), StandardCharsets.UTF_8)) {
+            fileLines.forEach(line -> contentBuilder.append(line).append(NEW_LINE));
         } catch (IOException e) {
             e.printStackTrace();
         }
         return contentBuilder.toString();
+    }
+
+    public static Long readLineByLineCount(String filePath) {
+        long count = 0;
+        String currentLine;
+        BufferedReader bufferedReader = null;
+        try {
+            bufferedReader = new BufferedReader(new FileReader(filePath));
+            while ((currentLine = bufferedReader.readLine()) != null) {
+                count++;
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (bufferedReader != null)
+                    bufferedReader.close();
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        }
+        return count;
     }
 
     public static String getFileName(String location, String fileNamePrefix, int fileCounter, String extension) {
