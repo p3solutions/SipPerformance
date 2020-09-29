@@ -8,6 +8,7 @@ import com.opencsv.exceptions.CsvValidationException;
 import com.p3.archon.sip_process.utility.Utility;
 import lombok.SneakyThrows;
 import org.apache.log4j.Logger;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.FileNotFoundException;
@@ -127,33 +128,72 @@ public class SipIntermediateJsonParser {
     }
 
     private JSONObject parseJsonResult(JSONObject result, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPositon, int tablePosition, int uniqueValue) {
-        JSONObject columnValuePair = new JSONObject();
+
         if (!checkList.contains(tableName)) {
             checkList.add(tableName);
             String idValue = getUniqueValue(line, tablePrimaryHeaderPosition.get(tableName));
-            if (!idValue.contains("null")) {
+            JSONObject columnValuePair = new JSONObject();
+            if (!idValue.contains("null") && !fetchAllIsEmpty(idValue)) {
                 if (result.isEmpty()) {
                     parseLineaAndInsertIntoJson(result, line, tableColumnValues, tableList, tableName, checkList, lineStartPositon, tablePosition, columnValuePair, idValue);
                 } else {
                     parseLineInsertorUpdateJson(result, line, tableColumnValues, tableList, tableName, checkList, lineStartPositon, tablePosition, columnValuePair, idValue);
                 }
+            }else{
+                columnValuePair.put(tableName, new JSONObject());
             }
         }
         return result;
     }
 
-    private void parseLineInsertorUpdateJson(JSONObject result, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPositon, int tablePosition, JSONObject columnValuePair, String idValue) {
-        Set<String> rowKeyValueSet = result.keySet();
-        if (rowKeyValueSet.contains(idValue)) {
-            traverseJsonIntoNextLevel(result, line, tableColumnValues, tableList, tableName, checkList, lineStartPositon, tablePosition, idValue);
+    private Boolean fetchAllIsEmpty(String idValue) {
+        if (idValue.contains(EMPTY)) {
+            List<String> temporary = Arrays.asList(idValue.split("_"));
+            List<String> emptyList = temporary.stream().filter(value -> value.equalsIgnoreCase(EMPTY)).collect(Collectors.toList());
+            return temporary.size() == emptyList.size();
         } else {
-            updateJsonAndTraverseIntoNextLevel(result, line, tableColumnValues, tableList, tableName, checkList, lineStartPositon, tablePosition, columnValuePair, idValue);
+            return false;
         }
     }
 
-    private void updateJsonAndTraverseIntoNextLevel(JSONObject result, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPositon, int tablePosition, JSONObject columnValuePair, String idValue) {
-        result.put(idValue, new JSONObject());
-        createColumnValuePair(line, tableColumnValues, tableName, lineStartPositon, columnValuePair);
+    private void parseLineInsertorUpdateJson(JSONObject result, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPositon, int tablePosition, JSONObject columnValuePair, String idValue) {
+
+        JSONObject valueContains = fetchTraversalDetails(result, idValue, line, lineStartPositon, tableColumnCount, tableName);
+        if (valueContains.length() != 0) {
+            traverseJsonIntoNextLevel(valueContains, line, tableColumnValues, tableList, tableName, checkList, lineStartPositon, tablePosition, idValue);
+        } else {
+            updateJsonAndTraverseIntoNextLevel(result, valueContains, line, tableColumnValues, tableList, tableName, checkList, lineStartPositon, tablePosition, columnValuePair, idValue);
+        }
+    }
+
+    private JSONObject fetchTraversalDetails(JSONObject result, String idValue, String[] line, int lineStartPositon, Map<String, Long> tableColumnValues, String tableName) {
+
+        JSONObject nextRowObject = new JSONObject();
+        if (result.has(idValue)) {
+            JSONArray rowElementsArray = result.getJSONArray(idValue);
+            for (int i = 0, size = rowElementsArray.length(); i < size; i++) {
+                List<String> currentColumnValues = Arrays.asList(line).subList(lineStartPositon, ((int) (lineStartPositon + tableColumnValues.get(tableName))));
+                JSONObject temporaryJson = rowElementsArray.getJSONObject(i);
+                List<String> temporaryValues = new ArrayList<>();
+                Iterator<String> keys = temporaryJson.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    if (temporaryJson.get(key) instanceof String) {
+                        temporaryValues.add(temporaryJson.getString(key));
+                    }
+                }
+                if ((temporaryValues.size() == currentColumnValues.size()) && temporaryValues.containsAll(currentColumnValues)) {
+                    nextRowObject = temporaryJson;
+                    break;
+                }
+            }
+        }
+        return nextRowObject;
+    }
+
+    private void updateJsonAndTraverseIntoNextLevel(JSONObject mainResult, JSONObject result, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPositon, int tablePosition, JSONObject columnValuePair, String idValue) {
+
+        createColumnValuePair(line, tableColumnValues, tableName, lineStartPositon, columnValuePair, idValue);
         tablePosition = tablePosition + 1;
         if (tablePosition >= tableList.size()) {
             tablePosition = tableList.size();
@@ -161,11 +201,16 @@ public class SipIntermediateJsonParser {
             columnValuePair.put(tableList.get(tablePosition), new JSONObject());
             columnValuePair.put(tableList.get(tablePosition), parseJsonResult(columnValuePair.getJSONObject(tableList.get(tablePosition)), line, tableColumnValues, tableList, tableList.get(tablePosition), checkList, (int) (lineStartPositon + tableColumnValues.get(tableName)), tablePosition, (int) (lineStartPositon + tableColumnValues.get(tableName))));
         }
-        result.put(idValue, columnValuePair);
+        if (mainResult.has(idValue)) {
+            mainResult.getJSONArray(idValue).put(columnValuePair);
+        } else {
+            JSONArray resultJsonObject = new JSONArray();
+            resultJsonObject.put(columnValuePair);
+            mainResult.put(idValue, resultJsonObject);
+        }
     }
 
-    private void traverseJsonIntoNextLevel(JSONObject result, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPositon, int tablePosition, String idValue) {
-        JSONObject valueContains = result.getJSONObject(idValue);
+    private void traverseJsonIntoNextLevel(JSONObject valueContains, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPositon, int tablePosition, String idValue) {
         tablePosition = tablePosition + 1;
         if (tablePosition >= tableList.size()) {
             tablePosition = tableList.size() - 1;
@@ -175,16 +220,18 @@ public class SipIntermediateJsonParser {
     }
 
     private void parseLineaAndInsertIntoJson(JSONObject result, String[] line, Map<String, Long> tableColumnValues, List<String> tableList, String tableName, List<String> checkList, int lineStartPosition, int tablePosition, JSONObject columnValuePair, String idValue) {
-        createColumnValuePair(line, tableColumnValues, tableName, lineStartPosition, columnValuePair);
+        JSONArray resultJsonObject = new JSONArray();
+        createColumnValuePair(line, tableColumnValues, tableName, lineStartPosition, columnValuePair, idValue);
         if (checkList.size() != tableList.size()) {
             tablePosition = tablePosition + 1;
             columnValuePair.put(tableList.get(tablePosition), new JSONObject());
             columnValuePair.put(tableList.get(tablePosition), parseJsonResult(columnValuePair.getJSONObject(tableList.get(tablePosition)), line, tableColumnValues, tableList, tableList.get(tablePosition), checkList, (int) (lineStartPosition + tableColumnValues.get(tableName)), tablePosition, (int) (lineStartPosition + tableColumnValues.get(tableName))));
         }
-        result.put(idValue, columnValuePair);
+        resultJsonObject.put(columnValuePair);
+        result.put(idValue, resultJsonObject);
     }
 
-    private void createColumnValuePair(String[] line, Map<String, Long> tableColumnValues, String tableName, int lineStartPosition, JSONObject columnValuePair) {
+    private void createColumnValuePair(String[] line, Map<String, Long> tableColumnValues, String tableName, int lineStartPosition, JSONObject columnValuePair, String idValue) {
 
         List<String> tempHeader = headerList.stream().filter(header -> header.startsWith(tableName + ".")).collect(Collectors.toList());
         List<String> values = Arrays.asList(line).subList(lineStartPosition, ((int) (lineStartPosition + tableColumnValues.get(tableName))));

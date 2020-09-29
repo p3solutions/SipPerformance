@@ -2,6 +2,7 @@ package com.p3.archon.sip_process.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.p3.archon.sip_process.bean.InputArgs;
+import com.p3.archon.sip_process.bean.TableDetails;
 import com.p3.archon.sip_process.bean.TablewithRelationBean;
 import com.p3.archon.sip_process.utility.Utility;
 import org.apache.log4j.Logger;
@@ -99,8 +100,7 @@ public class PdiSchemaGeneratorRussianDoll {
         pdiSchemaWriter.write(getTabSpace(level++) + "<xs:complexType>");
         pdiSchemaWriter.write(getTabSpace(level++) + "<xs:sequence>");
         getColumns(tableName);
-        List<String> relationShipTable = tablewithRelationBean.getTableList().stream().filter(tableDetails -> tableDetails.getName().equalsIgnoreCase(tableName)).flatMap(tableDetails -> tableDetails.getRelatedTables().stream()).collect(Collectors.toList());
-        Collections.sort(relationShipTable);
+        List<String> relationShipTable = tablewithRelationBean.getTableList().stream().filter(tableDetails -> tableDetails.getName().equalsIgnoreCase(tableName)).flatMap(tableDetails -> tableDetails.getRelatedTables().stream()).filter(relationTable -> tablewithRelationBean.getSelectedTableList().contains(relationTable)).sorted().collect(Collectors.toList());
         for (String childTable : relationShipTable) {
             if (checkList.contains(childTable))
                 continue;
@@ -145,7 +145,7 @@ public class PdiSchemaGeneratorRussianDoll {
                         + getColumnType((columnDataTypeMap.get(column))) + "\" minOccurs=\"0\"/>");
             }
         }
-        level++;
+       // level++;
     }
 
     private String getColumnType(Integer colType) {
@@ -211,7 +211,7 @@ public class PdiSchemaGeneratorRussianDoll {
         i = 0;
         tabSpace = "\n";
         while (i++ != tabSize) {
-            tabSpace += "\t";
+            tabSpace += "  ";
         }
         return tabSpace;
     }
