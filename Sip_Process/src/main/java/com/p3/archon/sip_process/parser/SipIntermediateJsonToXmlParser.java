@@ -4,6 +4,7 @@ import com.p3.archon.sip_process.bean.*;
 import com.p3.archon.sip_process.core.SipCreator;
 import com.p3.archon.sip_process.utility.Utility;
 import lombok.SneakyThrows;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -119,30 +120,39 @@ public class SipIntermediateJsonToXmlParser {
         updateAllContainingElements(rootTableJson, anotherRootTableJson, mainTable, containsRootTableObjectRowSet);
         updateAllRemainingRowElements(rootTableJson, anotherRootTableJson, rootTableObjectRowSet, anotherRootTableObjectRowSet);
     }
+
     private void updateAllContainingElements(JSONObject rootTableJson, JSONObject anotherRootTableJson, String mainTable, Set<String> containsRootTableObjectRowSet) {
         for (String containRowValue : containsRootTableObjectRowSet) {
-            JSONObject rootTableRowJsonElements = rootTableJson.getJSONObject(containRowValue);
-            JSONObject anotherRootTableRowJsonElements = anotherRootTableJson.getJSONObject(containRowValue);
-            Set<String> rootTableRowJsonElementsSet = getRowElementsSet(mainTable, rootTableRowJsonElements);
-            Set<String> anotherRootTableRowJsonElementsSet = getRowElementsSet(mainTable, anotherRootTableRowJsonElements);
-            if (!rootTableRowJsonElementsSet.isEmpty() || !anotherRootTableRowJsonElementsSet.isEmpty()) {
-                Set<String> remainingRootTableRowJsonElementsSet = getRemainingElements(rootTableRowJsonElementsSet, anotherRootTableRowJsonElementsSet);
-                if (remainingRootTableRowJsonElementsSet.isEmpty()) {
-                    traversalIntoNextLevel(rootTableRowJsonElements, anotherRootTableRowJsonElements, anotherRootTableRowJsonElementsSet);
-                } else {
-                    for (String remainingRowElements : remainingRootTableRowJsonElementsSet) {
-                        rootTableRowJsonElements.put(remainingRowElements, anotherRootTableRowJsonElements.getJSONObject(remainingRowElements));
+            JSONArray rootTableRowJsonElements = rootTableJson.getJSONArray(containRowValue);
+            JSONArray anotherTableRowJsonElements = anotherRootTableJson.getJSONArray(containRowValue);
+            for (int i = 0; i < rootTableRowJsonElements.length(); i++) {
+                for (int j = 0; j < anotherTableRowJsonElements.length(); j++) {
+                    JSONObject rootTableRowJsonElementsRow = rootTableRowJsonElements.getJSONObject(i);
+                    JSONObject anotherRootTableRowJsonElementsRow = anotherTableRowJsonElements.getJSONObject(j);
+                    Set<String> rootTableRowJsonElementsSet = getRowElementsSet(mainTable, rootTableRowJsonElementsRow);
+                    Set<String> anotherRootTableRowJsonElementsSet = getRowElementsSet(mainTable, anotherRootTableRowJsonElementsRow);
+                    if (!rootTableRowJsonElementsSet.isEmpty() || !anotherRootTableRowJsonElementsSet.isEmpty()) {
+                        Set<String> remainingRootTableRowJsonElementsSet = getRemainingElements(rootTableRowJsonElementsSet, anotherRootTableRowJsonElementsSet);
+                        if (remainingRootTableRowJsonElementsSet.isEmpty()) {
+                            traversalIntoNextLevel(rootTableRowJsonElementsRow, anotherRootTableRowJsonElementsRow, anotherRootTableRowJsonElementsSet);
+                        } else {
+                            for (String remainingRowElements : remainingRootTableRowJsonElementsSet) {
+                                rootTableRowJsonElementsRow.put(remainingRowElements, anotherRootTableRowJsonElementsRow.getJSONObject(remainingRowElements));
+                            }
+                        }
                     }
                 }
             }
         }
     }
+
     private void updateAllRemainingRowElements(JSONObject rootTableJson, JSONObject anotherRootTableJson, Set<String> rootTableObjectRowSet, Set<String> anotherRootTableObjectRowSet) {
         Set<String> remainingRootTableObjectRowSet = getRemainingElements(rootTableObjectRowSet, anotherRootTableObjectRowSet);
         for (String remainingRow : remainingRootTableObjectRowSet) {
             rootTableJson.put(remainingRow, anotherRootTableJson.get(remainingRow));
         }
     }
+
     private void traversalIntoNextLevel(JSONObject rootTableRowJsonElements, JSONObject anotherRootTableRowJsonElements, Set<String> anotherRootTableRowJsonElementsSet) {
         if (!anotherRootTableRowJsonElementsSet.isEmpty()) {
             for (String remainingRowElements : anotherRootTableRowJsonElementsSet) {
@@ -152,18 +162,22 @@ public class SipIntermediateJsonToXmlParser {
             }
         }
     }
+
     private Set<String> getRowElementsSet(String mainTable, JSONObject rootTableRowJsonElements) {
         return rootTableRowJsonElements.keySet().stream().filter(getWithoutRootName(mainTable)).collect(Collectors.toSet());
     }
+
     private Set<String> getRemainingElements(Set<String> rootTableObjectRowSet, Set<String> anotherRootTableObjectRowSet) {
         Set<String> remainingRootTableObjectRowSet = new LinkedHashSet<>();
         remainingRootTableObjectRowSet.addAll(anotherRootTableObjectRowSet);
         remainingRootTableObjectRowSet.removeAll(rootTableObjectRowSet);
         return remainingRootTableObjectRowSet;
     }
-    private Predicate<String> getWithoutRootName(String mainTable) {
-        return columnName -> !columnName.contains(mainTable + ".");
+
+    private Predicate<String> getWithoutRootName(String tableName) {
+        return columnName -> !columnName.contains(tableName + ".");
     }
+
     @SneakyThrows
     public Map<String, Long> createXMlDocument(Map<String, Long> timeMaintainer) {
         File file = new File(Utility.getFileName(outputLocation, FINAL_JSON_FILE, 0, JSON));
@@ -174,6 +188,7 @@ public class SipIntermediateJsonToXmlParser {
         Utility.fileCreatorWithContent(finalJsonWriter, mergedJsonObject.toString());
         return JsonToXmlParser(mergedJsonObject.getJSONObject(mainTable), getModifiedTableNameBasedOnTableName(mainTable), timeMaintainer);
     }
+
     private Map<String, Long> JsonToXmlParser(JSONObject mergedJsonObject, TableDetails tableName, Map<String, Long> timeMaintainer) throws IOException {
         if (!mainTable.equalsIgnoreCase(tableName.getName())) {
             XML_STRING.append("<TABLE_" + tableName.getModifiedName().toUpperCase() + ">" + NEW_LINE);
@@ -221,6 +236,7 @@ public class SipIntermediateJsonToXmlParser {
             tablePrintWriter.get(tableName.getName()).write(idsFileInsertionString + NEW_LINE);
         }
     }
+
     private Map<String, Long> getMainTableRowEnd(Map<String, Long> timeMaintainer) throws IOException {
         timeMaintainer.put(SINGLE_SIP_RECORD_TIME, (System.currentTimeMillis() - timeMaintainer.get(SINGLE_SIP_RECORD_TIME)));
         long batchAssemblerAddTime = System.currentTimeMillis();
@@ -230,17 +246,22 @@ public class SipIntermediateJsonToXmlParser {
         XML_STRING.delete(0, XML_STRING.length());
         return timeMaintainer;
     }
+
     private void parseTableRowElements(JSONObject mergedJsonObject, TableDetails tableName, String rowValue, Map<String, Long> timeMaintainer) throws IOException {
-        XML_STRING.append("<" + tableName.getModifiedName().toUpperCase() + "_ROW>" + NEW_LINE);
-        JSONObject rowJsonObject = mergedJsonObject.getJSONObject(rowValue);
-        List<String> relationShipTablesList = getRelationShipTableAndCreateColumns(tableName.getName(), rowJsonObject, Utility.getSetToList(rowJsonObject.keySet()));
-        Collections.sort(relationShipTablesList);
-        for (String relatedTable : relationShipTablesList) {
-            if (!rowJsonObject.getJSONObject(relatedTable).isEmpty()) {
+        JSONArray rowElementsArray = mergedJsonObject.getJSONArray(rowValue);
+        if (rowElementsArray.length() == 0) {
+            return;
+        }
+        for (int row = 0; row < rowElementsArray.length(); row++) {
+            XML_STRING.append("<" + tableName.getModifiedName().toUpperCase() + "_ROW>" + NEW_LINE);
+            JSONObject rowJsonObject = rowElementsArray.getJSONObject(row);
+            List<String> relationShipTablesList = getRelationShipTableAndCreateColumns(tableName.getName(), rowJsonObject, Utility.getSetToList(rowJsonObject.keySet()));
+            Collections.sort(relationShipTablesList);
+            for (String relatedTable : relationShipTablesList) {
                 JsonToXmlParser(rowJsonObject.getJSONObject(relatedTable), getModifiedTableNameBasedOnTableName(relatedTable), timeMaintainer);
             }
+            XML_STRING.append("</" + tableName.getModifiedName().toUpperCase() + "_ROW>" + NEW_LINE);
         }
-        XML_STRING.append("</" + tableName.getModifiedName().toUpperCase() + "_ROW>" + NEW_LINE);
     }
 
     private List<String> getRelationShipTableAndCreateColumns(String tableName, JSONObject rowJsonObject, List<String> sortedColumnWithRelationShipKeys) {

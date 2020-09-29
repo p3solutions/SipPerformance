@@ -189,6 +189,7 @@ public class Processor {
         } else {
             Map<Integer, List<String>> pathTableList = pathandQueryCreator.startParsingAndCreationPathList(selectedTableList);
             Map<Integer, String> queryList = pathandQueryCreator.getConstructQueryList(pathTableList);
+            System.out.println(queryList);
             long startConditionTime = System.currentTimeMillis();
             Connection connection = connectionChecker.checkConnection(inputBean);
             reportBean.getMainTablePerformance().setDbHitCounter(reportBean.getMainTablePerformance().getDbHitCounter() + 1);
@@ -212,7 +213,7 @@ public class Processor {
                 startCreatingSipIntermediateJsonParserMap(pathandQueryCreator, selectedTableList, pathTableList, mainTablePrimaryKeyColumns, filePreviousLinesMaintainer, sipIntermediateJsonParserMap);
             } else {
                 sipIntermediateJsonParserMap = getStartGeneratingRecordFileAndCreateIntermediateJsonBean(pathTableList, queryList, mainTablePrimaryKeyColumns, filePreviousLinesMaintainer, customThreadPool, charReplacement, reportBean.getPathPerformanceMap(), pathandQueryCreator);
-                startGnerartingCOlumnDataTypeDebugFile();
+                startGeneratingColumnDataTypeDebugFile();
             }
             startIterateEachMainTableRecord(mainTableRowPrimaryValues, filePreviousLinesMaintainer, sipIntermediateJsonParserMap, pathandQueryCreator.getTablewithRelationBean());
         }
@@ -236,7 +237,7 @@ public class Processor {
         }
     }
 
-    private void startGnerartingCOlumnDataTypeDebugFile() {
+    private void startGeneratingColumnDataTypeDebugFile() {
         try {
             PrintWriter columnDataWriter = new PrintWriter(inputBean.getOutputLocation() + File.separator + "columnDataType.json");
             String json = new ObjectMapper().writeValueAsString(columnDataTypeMap);
@@ -354,9 +355,6 @@ public class Processor {
             List<String> duplicateRowFinderInMainTable = new ArrayList<>();
             boolean isAlreadyValuesContains;
             for (String mainTableKeyRowsValue : mainTableRowPrimaryValues) {
-                if (mainTableKeyRowsValue.equalsIgnoreCase("884061910")) {
-                    System.out.println("Main table value");
-                }
                 if (duplicateRowFinderInMainTable.contains(mainTableKeyRowsValue)) {
                     isAlreadyValuesContains = true;
                 } else {
@@ -377,6 +375,10 @@ public class Processor {
                     startAddingRecordIntoBatchAssembler(sipIntermediateJsonToXmlParser, timeMaintainer);
                     rowCounter = updateRecordTimeWithTimeMaintainer(rowCounter, timeMaintainer, reportBean);
                 }
+            }
+            if (duplicateRowFinderInMainTable.size() > 0) {
+                LOGGER.fatal("Total No.of.duplicate row :" + duplicateRowFinderInMainTable.size()+" Row Processed");
+                rowCounter += duplicateRowFinderInMainTable.size();
             }
             sipIntermediateJsonToXmlParser.generateIdsFileCreation();
             for (Map.Entry<Integer, SipIntermediateJsonParser> sipIntermediateJsonParserEntry : sipIntermediateJsonParserMap.entrySet()) {
@@ -441,7 +443,6 @@ public class Processor {
      * @return
      */
     private Map<String, Long> startAddingRecordIntoBatchAssembler(SipIntermediateJsonToXmlParser sipIntermediateJsonToXmlParser, Map<String, Long> timeMaintainer) {
-
         sipIntermediateJsonToXmlParser.joinAllJson();
         Map<String, Long> batchAssemblerTiming = sipIntermediateJsonToXmlParser.createXMlDocument(timeMaintainer);
         return batchAssemblerTiming;

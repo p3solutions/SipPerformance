@@ -15,6 +15,7 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import java.io.*;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.text.DecimalFormat;
@@ -107,6 +108,7 @@ public class RowObjectCreator {
     }
 
     private void getBlobInfo(Object columnData, String columnName, String primaryKeyValues) {
+
         if (columnData != null) {
             try {
                 String validFileName = getValidNameForThatFile(columnName, primaryKeyValues);
