@@ -1,0 +1,20 @@
+{
+  "tableList": [
+    {
+      "name": "",
+      "columnQuery": "",
+      "filterQuery": "",
+      "blobColumn":"",
+      "keyColumns":[],
+      "extraColumns":[],
+      "relatedTables": [
+        
+      ],
+      "relationshipList": [
+        
+      ]
+    }
+  ],
+  "selectedTableList":[],
+  "charReplace":{}
+}
